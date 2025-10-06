@@ -104,9 +104,11 @@ TIME_ZONE = env("TIME_ZONE")
 USE_I18N = True
 USE_TZ = True
 
-# Static files (we will adjust for production later)
-STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+# Pasta onde os arquivos estáticos serão coletados
+STATIC_ROOT = os.path.join(BASE_DIR, "static")
+
+# URL para acessar os arquivos estáticos
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
