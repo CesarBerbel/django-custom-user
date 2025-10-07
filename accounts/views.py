@@ -1,6 +1,10 @@
 from __future__ import annotations
 from django.contrib.auth import login
-from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.views import (
+    PasswordResetView, PasswordResetDoneView,
+    PasswordResetConfirmView, PasswordResetCompleteView,
+    LoginView, LogoutView
+)
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
@@ -36,6 +40,11 @@ class EmailLoginView(AnonymousRequiredMixin, LoginView):
         messages.success(self.request, "Welcome back!")
         return super().form_valid(form)
 
+    def form_invalid(self, form):
+        # Add an error toast on invalid credentials
+        messages.error(self.request, "Invalid credentials. Please try again.")
+        return super().form_invalid(form)
+
 class EmailLogoutView(LogoutView):
     next_page = reverse_lazy("accounts:login")
 
@@ -60,11 +69,59 @@ class ProfileEditView(LoginRequiredMixin, UpdateView):
         return self.request.user
 
     def form_valid(self, form):
-        messages.success(self.request, "Profile updated successfully.")
-        return super().form_valid(form)    
+        # Detect if email changed to show a specific toast
+        old_email = self.request.user.email
+        response = super().form_valid(form)
+        new_email = self.request.user.email
+        if new_email.lower() != (old_email or "").lower():
+            messages.success(self.request, "Email updated successfully.")
+        else:
+            messages.success(self.request, "Profile updated successfully.")
+        return response  
 
 class ProfilePasswordChangeView(LoginRequiredMixin, PasswordChangeView):
     """Let the user change password."""
     template_name = "accounts/password_change.html"
     success_url = reverse_lazy("accounts:profile")
     login_url = "accounts:login"
+
+class PasswordResetRequestView(PasswordResetView):
+    """
+    Ask user email to send a password reset link.
+    """
+    template_name = "accounts/password_reset.html"
+    email_template_name = "accounts/password_reset_email.txt"
+    subject_template_name = "accounts/password_reset_subject.txt"
+    success_url = reverse_lazy("accounts:password_reset_done")
+    from_email = None  # use DEFAULT_FROM_EMAIL
+    # html_email_template_name = "accounts/password_reset_email.html"  # optional HTML version
+
+    def form_valid(self, form):
+        messages.info(self.request, "If an account with that email exists, a reset link was sent.")
+        return super().form_valid(form)
+
+
+class PasswordResetDoneCustomView(PasswordResetDoneView):
+    """
+    Confirmation page after email submit.
+    """
+    template_name = "accounts/password_reset_done.html"
+
+
+class PasswordResetConfirmCustomView(PasswordResetConfirmView):
+    """
+    Page where user sets a new password using the emailed token.
+    """
+    template_name = "accounts/password_reset_confirm.html"
+    success_url = reverse_lazy("accounts:password_reset_complete")
+
+    def form_valid(self, form):
+        messages.success(self.request, "Your password has been set. You can sign in now.")
+        return super().form_valid(form)
+
+
+class PasswordResetCompleteCustomView(PasswordResetCompleteView):
+    """
+    Final 'success' page after password was changed.
+    """
+    template_name = "accounts/password_reset_complete.html"    

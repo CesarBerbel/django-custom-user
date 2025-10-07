@@ -1,3 +1,4 @@
+{% load toast_extras %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,23 +8,20 @@
 
   <!-- Global styles -->
   <style>
+    /* Global (light-first) design: white background, dark text, subtle borders */
     :root {
-      color-scheme: light dark;
-      --bg: #fafafa;
-      --fg: #111;
-      --border: #ddd;
+      color-scheme: light; /* prioritize light */
+      --bg: #ffffff;
+      --fg: #0a0a0a;
+      --muted: #6b7280;       /* gray-500-ish */
+      --border: #e5e7eb;      /* gray-200-ish */
       --radius: 12px;
-      --accent: #2563eb;
+      --shadow: 0 4px 10px rgba(0,0,0,0.06);
+      --accent: #111111;      /* near-black by default; change if you want color links */
+      --accent-hover: #000000;
     }
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #111;
-        --fg: #fafafa;
-        --border: #333;
-      }
-    }
-
+    /* Page frame */
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       background: var(--bg);
@@ -36,12 +34,12 @@
 
     .container {
       width: 100%;
-      max-width: 800px;
+      max-width: 880px;
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 2rem;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+      box-shadow: var(--shadow);
     }
 
     header {
@@ -56,45 +54,49 @@
       padding-top: 1rem;
       text-align: center;
       font-size: 0.9rem;
-      color: #777;
+      color: var(--muted);
     }
 
     a {
       color: var(--accent);
-      text-decoration: none;
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
 
     a:hover {
-      text-decoration: underline;
+      color: var(--accent-hover);
     }
-    
-    .toast-msg.success { background: #ecfdf5; border-color: #10b98155; }
-    .toast-msg.error   { background: #fef2f2; border-color: #ef444455; }
-    .toast-msg.warning { background: #fffbeb; border-color: #f59e0b55; }
-    .toast-msg.info    { background: #eff6ff; border-color: #3b82f655; }
+
+    /* Buttons (for simplicity; adjust as needed) */
+    button {
+      background: var(--fg);
+      color: var(--bg);
+      border: 1px solid var(--fg);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(0.95); }
+
+    /* Toasts (top-left) — tuned for white background */
+    .toast-msg {
+      background: #ffffff;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    }
+    .toast-msg.success { border-color: #10b98155; }
+    .toast-msg.error   { border-color: #ef444455; }
+    .toast-msg.warning { border-color: #f59e0b55; }
+    .toast-msg.info    { border-color: #3b82f655; }
   </style>
+
 </head>
 
 <body>
   <div class="container">
-      <!-- Toast messages container (top-left, auto-hide after 3s) -->
-    {% if messages %}
-    <div id="toast-container" aria-live="polite" aria-atomic="true" style="
-        position: fixed; top: 12px; left: 12px; z-index: 9999;
-        display: grid; gap: 8px;">
-      {% for message in messages %}
-        <div class="toast-msg {{ message.tags }}" role="status" style="
-            padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd;
-            background: #f7f7f7; color: #111; max-width: 420px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-          <!-- Simple level -> style mapping -->
-          {% comment %} <span style="font-weight:600; margin-right:6px;">
-            {% if 'success' in message.tags %}Success{% elif 'error' in message.tags %}Error{% elif 'warning' in message.tags %}Warning{% else %}Info{% endif %}:
-          </span> {% endcomment %}
-          <span>{{ message }}</span>
-        </div>
-      {% endfor %}
-    </div>
-    {% endif %}
+    {% include "partials/toasts.html" %}
     <header>
       <h1>{% block header %}Config Starter{% endblock %}</h1>
       <nav style="margin-top:0.5rem;">
