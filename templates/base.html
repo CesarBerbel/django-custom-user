@@ -67,11 +67,34 @@
     a:hover {
       text-decoration: underline;
     }
+    
+    .toast-msg.success { background: #ecfdf5; border-color: #10b98155; }
+    .toast-msg.error   { background: #fef2f2; border-color: #ef444455; }
+    .toast-msg.warning { background: #fffbeb; border-color: #f59e0b55; }
+    .toast-msg.info    { background: #eff6ff; border-color: #3b82f655; }
   </style>
 </head>
 
 <body>
   <div class="container">
+      <!-- Toast messages container (top-left, auto-hide after 3s) -->
+    {% if messages %}
+    <div id="toast-container" aria-live="polite" aria-atomic="true" style="
+        position: fixed; top: 12px; left: 12px; z-index: 9999;
+        display: grid; gap: 8px;">
+      {% for message in messages %}
+        <div class="toast-msg {{ message.tags }}" role="status" style="
+            padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd;
+            background: #f7f7f7; color: #111; max-width: 420px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+          <!-- Simple level -> style mapping -->
+          {% comment %} <span style="font-weight:600; margin-right:6px;">
+            {% if 'success' in message.tags %}Success{% elif 'error' in message.tags %}Error{% elif 'warning' in message.tags %}Warning{% else %}Info{% endif %}:
+          </span> {% endcomment %}
+          <span>{{ message }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     <header>
       <h1>{% block header %}Config Starter{% endblock %}</h1>
       <nav style="margin-top:0.5rem;">
@@ -103,5 +126,17 @@
       {% endblock %}
     </footer>
   </div>
+  <script>
+    // Auto-hide toasts after 3 seconds
+    (function () {
+      const container = document.getElementById("toast-container");
+      if (!container) return;
+      setTimeout(() => {
+        container.style.transition = "opacity 200ms ease";
+        container.style.opacity = "0";
+        setTimeout(() => container.remove(), 220);
+      }, 3000);
+    })();
+  </script>
 </body>
 </html>
