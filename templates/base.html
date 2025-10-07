@@ -23,6 +23,9 @@
   <style>
     /* Global (light-first) design: white background, dark text, subtle borders */
     :root {
+      /* Branding (primary) */
+      --bs-primary: #2563eb;         /* azul */
+      --bs-primary-rgb: 37, 99, 235;      
       color-scheme: light; /* prioritize light */
       --bg: #ffffff;
       --fg: #0a0a0a;
@@ -116,14 +119,14 @@
     <nav class="d-flex align-items-center gap-2">
       {% if user.is_authenticated %}
         <span class="text-muted small">Hello, {{ user.email }}</span>
-        <a href="{% url 'accounts:profile' %}" class="btn btn-outline-dark btn-sm">Profile</a>
+        <a href="{% url 'accounts:profile' %}" class="btn btn-outline-primary btn-sm">Profile</a>
         <form method="post" action="{% url 'accounts:logout' %}" class="d-inline">
           {% csrf_token %}
-          <button type="submit" class="btn btn-dark btn-sm">Logout</button>
+          <button type="submit" class="btn btn-primary btn-sm">Logout</button>
         </form>
       {% else %}
-        <a href="{% url 'accounts:login' %}" class="btn btn-dark btn-sm">Login</a>
-        <a href="{% url 'accounts:register' %}" class="btn btn-outline-dark btn-sm">Register</a>
+        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-sm">Login</a>
+        <a href="{% url 'accounts:register' %}" class="btn btn-outline-primary btn-sm">Register</a>
       {% endif %}
     </nav>
   </header>

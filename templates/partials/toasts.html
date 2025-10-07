@@ -3,7 +3,7 @@
 {% if messages %}
   <div id="toast-container" class="position-fixed top-0 start-0 p-3" style="z-index: 1080;">
     {% for message in messages %}
-      <div class="toast align-items-center show mb-2 border-0"
+      <div class="toast align-items-center show mb-2 border-0 {{ message.tags|toast_bs_classes }}"
            role="status" aria-live="polite" aria-atomic="true"
            data-bs-delay="3000">
         <div class="d-flex">
