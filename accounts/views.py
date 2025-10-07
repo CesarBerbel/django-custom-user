@@ -5,7 +5,7 @@ from django.contrib.auth.views import (
     PasswordResetConfirmView, PasswordResetCompleteView,
     LoginView, LogoutView
 )
-from django.http import HttpRequest, HttpResponse
+from .forms_password import CustomPasswordChangeForm
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView
@@ -84,6 +84,11 @@ class ProfilePasswordChangeView(LoginRequiredMixin, PasswordChangeView):
     template_name = "accounts/password_change.html"
     success_url = reverse_lazy("accounts:profile")
     login_url = "accounts:login"
+    form_class = CustomPasswordChangeForm  # NEW
+
+    def form_valid(self, form):
+        messages.success(self.request, "Password changed successfully.")
+        return super().form_valid(form)
 
 class PasswordResetRequestView(PasswordResetView):
     """

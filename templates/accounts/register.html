@@ -4,7 +4,7 @@
 {% block header %}Create your account{% endblock %}
 
 {% block content %}
-  <form method="post" class="mx-auto" style="max-width: 420px;">
+  <form method="post" class="mx-auto" style="max-width: 420px;" novalidate>
     {% csrf_token %}
     {{ form|crispy }}
     <button type="submit" class="btn btn-primary mt-2">Create account</button>
