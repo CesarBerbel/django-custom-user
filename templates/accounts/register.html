@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Config Starter{% endblock %}
+
+{% block header %}Create your account{% endblock %}
+
+{% block content %}
+  <p>Please fill in your email and choose a password.</p>
+
+  <form method="post" class="form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div style="display:grid; gap:0.75rem; max-width:420px;">
+      <label>
+        <div>Email</div>
+        {{ form.email }}
+        {{ form.email.errors }}
+      </label>
+      <label>
+        <div>Password</div>
+        {{ form.password1 }}
+        {{ form.password1.errors }}
+      </label>
+      <label>
+        <div>Confirm password</div>
+        {{ form.password2 }}
+        {{ form.password2.errors }}
+      </label>
+
+      <button type="submit" style="padding:0.5rem 0.75rem; border-radius:8px;">
+        Create account
+      </button>
+    </div>
+  </form>
+
+  <p style="margin-top:1rem;">
+    Already have an account?
+    <a href="{% url 'accounts:login' %}">Sign in</a>
+  </p>
+{% endblock %}

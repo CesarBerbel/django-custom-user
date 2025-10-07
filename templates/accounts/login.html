@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Config Starter{% endblock %}
+
+{% block header %}Sign in{% endblock %}
+
+{% block content %}
+  <form method="post" class="form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div style="display:grid; gap:0.75rem; max-width:420px;">
+      <label>
+        <div>Email</div>
+        {{ form.username }} {# AuthenticationForm uses 'username' field name #}
+        {{ form.username.errors }}
+      </label>
+      <label>
+        <div>Password</div>
+        {{ form.password }}
+        {{ form.password.errors }}
+      </label>
+
+      <button type="submit" style="padding:0.5rem 0.75rem; border-radius:8px;">
+        Sign in
+      </button>
+    </div>
+  </form>
+
+  <p style="margin-top:1rem;">
+    New here?
+    <a href="{% url 'accounts:register' %}">Create an account</a>
+  </p>
+{% endblock %}

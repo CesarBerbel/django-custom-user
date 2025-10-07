@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Config Starter{% endblock %}</title>
+
+  <!-- Global styles -->
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fafafa;
+      --fg: #111;
+      --border: #ddd;
+      --radius: 12px;
+      --accent: #2563eb;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111;
+        --fg: #fafafa;
+        --border: #333;
+      }
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 800px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+      padding-top: 1rem;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #777;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>{% block header %}Config Starter{% endblock %}</h1>
+      <nav style="margin-top:0.5rem;">
+        {% if user.is_authenticated %}
+          👋 Hello, {{ user.email }}
+          <form method="post" action="{% url 'accounts:logout' %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" style="background:none; border:none; color:#2563eb; cursor:pointer; text-decoration:underline;">
+              Logout
+            </button>
+          </form>
+        {% else %}
+          <a href="{% url 'accounts:login' %}">Login</a> ·
+          <a href="{% url 'accounts:register' %}">Register</a>
+        {% endif %}
+      </nav>
+    </header>
+
+    <main>
+      {% block content %}
+      <!-- Page-specific content goes here -->
+      {% endblock %}
+    </main>
+
+    <footer>
+      {% block footer %}
+      © {{ now|date:"Y" }} Config Starter · Powered by Django
+      {% endblock %}
+    </footer>
+  </div>
+</body>
+</html>

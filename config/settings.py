@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'core',
+    'accounts',
 ]
 
 
@@ -117,3 +118,13 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Tell Django about the custom user model
+AUTH_USER_MODEL = "accounts.User"
+
+# Redirect users to login when accessing @login_required views
+LOGIN_URL = "accounts:login"
+
+# Where to redirect after successful login/logout
+LOGIN_REDIRECT_URL = "core:home"
+LOGOUT_REDIRECT_URL = "accounts:login"
