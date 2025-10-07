@@ -77,6 +77,7 @@
       <nav style="margin-top:0.5rem;">
         {% if user.is_authenticated %}
           👋 Hello, {{ user.email }}
+          <a href="{% url 'accounts:profile' %}">Profile</a>
           <form method="post" action="{% url 'accounts:logout' %}" style="display:inline;">
             {% csrf_token %}
             <button type="submit" style="background:none; border:none; color:#2563eb; cursor:pointer; text-decoration:underline;">

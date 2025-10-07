@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Profile - Config Starter{% endblock %}
+{% block header %}Edit profile{% endblock %}
+
+{% block content %}
+  <form method="post" style="display:grid; gap:0.75rem; max-width:420px;">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <label>
+      <div>Email</div>
+      {{ form.email }}
+      {{ form.email.errors }}
+    </label>
+
+    <label>
+      <div>First name</div>
+      {{ form.first_name }}
+      {{ form.first_name.errors }}
+    </label>
+
+    <label>
+      <div>Last name</div>
+      {{ form.last_name }}
+      {{ form.last_name.errors }}
+    </label>
+
+    <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+      <button type="submit">Save changes</button>
+      <a href="{% url 'accounts:profile' %}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}
