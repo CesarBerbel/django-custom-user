@@ -1,0 +1,85 @@
+/* Global (light-first) design: white background, dark text, subtle borders */
+:root {
+    /* Branding (primary) */
+    --bs-primary: #2563eb;         /* azul */
+    --bs-primary-rgb: 37, 99, 235;      
+    color-scheme: light; /* prioritize light */
+    --bg: #ffffff;
+    --fg: #0a0a0a;
+    --muted: #6b7280;       /* gray-500-ish */
+    --border: #e5e7eb;      /* gray-200-ish */
+    --radius: 12px;
+    --shadow: 0 4px 10px rgba(0,0,0,0.06);
+    --accent: #111111;      /* near-black by default; change if you want color links */
+    --accent-hover: #000000;
+}
+
+/* Page frame */
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 2rem;
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 880px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    box-shadow: var(--shadow);
+}
+
+header {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+}
+
+footer {
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+    padding-top: 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+a:hover {
+    color: var(--accent-hover);
+}
+
+/* Buttons (for simplicity; adjust as needed) */
+button {
+    background: var(--fg);
+    color: var(--bg);
+    border: 1px solid var(--fg);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+}
+button:hover { filter: brightness(0.95); }
+
+/* Toasts (top-left) — tuned for white background */
+.toast-msg {
+    background: #ffffff;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+.toast-msg.success { border-color: #10b98155; }
+.toast-msg.error   { border-color: #ef444455; }
+.toast-msg.warning { border-color: #f59e0b55; }
+.toast-msg.info    { border-color: #3b82f655; }
