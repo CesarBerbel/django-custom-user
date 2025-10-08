@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     'crispy_bootstrap5',
 
     'core',
-    'accounts',
+    'users',
 ]
 
 # Crispy configuration (use Bootstrap 5)
@@ -126,14 +126,14 @@ STATIC_URL = '/static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Tell Django about the custom user model
-AUTH_USER_MODEL = "accounts.User"
+AUTH_USER_MODEL = "users.User"
 
 # Redirect users to login when accessing @login_required views
-LOGIN_URL = "accounts:login"
+LOGIN_URL = "users:login"
 
 # Where to redirect after successful login/logout
 LOGIN_REDIRECT_URL = "core:home"
-LOGOUT_REDIRECT_URL = "accounts:login"
+LOGOUT_REDIRECT_URL = "users:login"
 
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="")

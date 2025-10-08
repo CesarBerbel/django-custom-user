@@ -33,14 +33,14 @@
     <nav class="d-flex align-items-center gap-2">
       {% if user.is_authenticated %}
         <span class="text-muted small">Hello, {{ user.email }}</span>
-        <a href="{% url 'accounts:profile' %}" class="btn btn-outline-primary btn-sm">Profile</a>
-        <form method="post" action="{% url 'accounts:logout' %}" class="d-inline">
+        <a href="{% url 'users:profile' %}" class="btn btn-outline-primary btn-sm">Profile</a>
+        <form method="post" action="{% url 'users:logout' %}" class="d-inline">
           {% csrf_token %}
           <button type="submit" class="btn btn-primary btn-sm">Logout</button>
         </form>
       {% else %}
-        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-sm">Login</a>
-        <a href="{% url 'accounts:register' %}" class="btn btn-outline-primary btn-sm">Register</a>
+        <a href="{% url 'users:login' %}" class="btn btn-primary btn-sm">Login</a>
+        <a href="{% url 'users:register' %}" class="btn btn-outline-primary btn-sm">Register</a>
       {% endif %}
     </nav>
   </header>
