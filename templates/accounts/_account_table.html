@@ -1,0 +1,31 @@
+<table class="table table-hover align-middle">
+  <thead>
+    <tr>
+      <th>Bank</th>
+      <th>Type</th>
+      <th>Country</th>
+      <th>Balance</th>
+      <th class="text-end">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for acc in accounts %}
+    <tr>
+      <td>{{ acc.bank }}</td>
+      <td>{{ acc.type }}</td>
+      <td>{{ acc.country }}</td>
+      <td>{{ acc.balance }} {{ acc.country.currency_code }}</td>
+      <td class="text-end">
+        <a href="{% url 'accounts:edit' acc.pk %}" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-pencil"></i>
+        </a>
+        <a href="{% url 'accounts:delete' acc.pk %}" class="btn btn-sm btn-outline-danger">
+          <i class="bi bi-trash"></i>
+        </a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" class="text-center text-muted">No active accounts.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

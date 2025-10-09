@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Confirm delete{% endblock %}
+{% block header %}Confirm deactivation{% endblock %}
+
+{% block content %}
+<div class="alert alert-warning">
+  This action will <strong>deactivate</strong> the account "{{ object.bank }}".
+  It will not be permanently removed, but it will stop appearing in the list.
+  Reactivation is only possible via the admin.
+</div>
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-danger">Deactivate</button>
+  <a href="{% url 'accounts:list' %}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}
