@@ -10,9 +10,9 @@ class AccountTypeAdmin(admin.ModelAdmin):
 
 @admin.register(Country)
 class CountryAdmin(admin.ModelAdmin):
-    list_display = ("code", "currency_code", "currency_name")
+    list_display = ("code", "currency_code", "currency_symbol", "currency_name")
     list_filter = ("currency_code",)
-    search_fields = ("code", "currency_code", "currency_name")
+    search_fields = ("code", "currency_code", "currency_name", "currency_symbol")
 
 @admin.register(Bank)
 class BankAdmin(admin.ModelAdmin):

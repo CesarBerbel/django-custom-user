@@ -1,3 +1,5 @@
+{% load money_extras %}
+
 <table class="table table-hover align-middle">
   <thead>
     <tr>
@@ -14,7 +16,10 @@
       <td>{{ acc.bank }}</td>
       <td>{{ acc.type }}</td>
       <td>{{ acc.country }}</td>
-      <td>{{ acc.balance }} {{ acc.country.currency_code }}</td>
+      <td>
+        {# símbolo antes (padrão); se quiser após, use: {% money acc.balance acc.country symbol_first=False %} #}
+        {% money acc.balance acc.country %}
+      </td>
       <td class="text-end">
         <a href="{% url 'accounts:edit' acc.pk %}" class="btn btn-sm btn-outline-primary">
           <i class="bi bi-pencil"></i>
