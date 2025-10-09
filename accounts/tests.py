@@ -175,3 +175,9 @@ class AccountViewsTests(TestCase):
         list_url = reverse("accounts:list")
         resp_list = self.client.get(list_url)
         self.assertNotContains(resp_list, str(self.acc.bank), html=False)
+
+    def test_list_view_shows_symbol(self):
+        self.country.currency_symbol = "€"
+        self.country.save()
+        resp = self.client.get(reverse("accounts:list"))
+        self.assertContains(resp, "€", html=False)

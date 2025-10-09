@@ -41,6 +41,12 @@ class Country(models.Model):
         help_text="Optional currency name, e.g., 'Euro', 'Brazilian Real'",
     )
 
+    currency_symbol = models.CharField(  
+        max_length=5,
+        blank=True,
+        help_text="Currency symbol, e.g., '€', 'R$', '$'",
+    )
+
     class Meta:
         verbose_name = "Country"
         verbose_name_plural = "Countries"
