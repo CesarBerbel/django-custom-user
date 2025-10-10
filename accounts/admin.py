@@ -21,8 +21,8 @@ class BankAdmin(admin.ModelAdmin):
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ("bank", "type", "country", "initial_balance", "balance", "active", "created_at")
-    list_filter = ("active", "type", "country__code")
-    search_fields = ("bank",)
-    autocomplete_fields = ("type", "country")
-    readonly_fields = ("created_at", "updated_at", "deactivated_at", "balance")
+    list_display = ("bank", "type", "country", "owner", "initial_balance", "balance", "active", "created_at")
+    list_filter = ("active", "type", "country__code", "bank", "owner")
+    search_fields = ("bank__name","owner__email")
+    autocomplete_fields = ("type", "country", "bank", "owner")
+    readonly_fields = ("created_at", "updated_at", "deactivated_at", "balance", "owner")

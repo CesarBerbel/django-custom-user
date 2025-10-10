@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.core.exceptions import PermissionDenied
 
 # Create your views here.
 from django.contrib import messages
@@ -18,7 +19,9 @@ class AccountListView(LoginRequiredMixin, generic.ListView):
 
     def get_queryset(self):
         # show only active accounts
-        return Account.objects.filter(active=True).order_by("-updated_at")
+        return (Account.objects
+                .filter(owner=self.request.user, active=True)
+                .order_by("-updated_at"))
 
 
 class AccountCreateView(LoginRequiredMixin, generic.CreateView):
@@ -28,9 +31,11 @@ class AccountCreateView(LoginRequiredMixin, generic.CreateView):
     success_url = reverse_lazy("accounts:list")
 
     def form_valid(self, form):
-        # ensure created as active; balance will default to initial in model.save()
         obj = form.save(commit=False)
+        obj.owner = self.request.user
         obj.active = True
+        if obj.balance is None:
+            obj.balance = obj.initial_balance
         obj.save()
         messages.success(self.request, f"Account '{obj.bank}' created successfully.")
         return super().form_valid(form)
@@ -42,7 +47,12 @@ class AccountUpdateView(LoginRequiredMixin, generic.UpdateView):
     template_name = "accounts/account_form.html"
     success_url = reverse_lazy("accounts:list")
 
+    def get_queryset(self):
+        return Account.objects.filter(owner=self.request.user, active=True)
+
     def form_valid(self, form):
+        if form.instance.owner != self.request.user:
+            raise PermissionDenied("You cannot edit this account.")
         messages.success(self.request, f"Account '{form.instance.bank}' updated successfully.")
         return super().form_valid(form)
 
@@ -55,8 +65,13 @@ class AccountDeleteView(LoginRequiredMixin, generic.DeleteView):
     template_name = "accounts/account_confirm_delete.html"
     success_url = reverse_lazy("accounts:list")
 
+    def get_queryset(self):
+        return Account.objects.filter(owner=self.request.user, active=True)
+
     def delete(self, request, *args, **kwargs):
         obj = self.get_object()
-        obj.delete()  # soft delete via model.delete()
+        if obj.owner != request.user:
+            raise PermissionDenied("You cannot delete this account.")
+        obj.delete()  # soft delete
         messages.warning(request, f"Account '{obj.bank}' has been deactivated.")
         return super().delete(request, *args, **kwargs)

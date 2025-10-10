@@ -1,4 +1,5 @@
 from __future__ import annotations
+from django.conf import settings
 from decimal import Decimal
 from django.core.validators import RegexValidator, MinValueValidator
 from django.db import models
@@ -80,6 +81,12 @@ class Account(models.Model):
     """
     Financial account with bank, type, country, balances, and control fields.
     """
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="accounts",
+        help_text="Owner user that created/owns this account",
+    )
     bank = models.ForeignKey(Bank, on_delete=models.PROTECT, related_name="accounts")
     type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name="accounts")
     country = models.ForeignKey(Country, on_delete=models.PROTECT, related_name="accounts")
@@ -106,6 +113,7 @@ class Account(models.Model):
         ordering = ["bank", "id"]
         indexes = [
             models.Index(fields=["bank"]),
+            models.Index(fields=["owner"]),
             models.Index(fields=["active"]),
         ]
 

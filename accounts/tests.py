@@ -9,7 +9,10 @@ from django.urls import reverse
 
 
 class AccountFormsTests(TestCase):
-    def setUp(self):
+    def setUp(self):        
+        User = get_user_model()
+        self.user = User.objects.create_user(email="u@example.com", password="pass12345")
+        self.client.force_login(self.user)
         self.type = AccountType.objects.create(name="Savings")
         self.country = Country.objects.create(code="BR", currency_code="BRL", currency_name="Real")
         self.bank = Bank.objects.create(name="Bank X")
@@ -29,6 +32,7 @@ class AccountFormsTests(TestCase):
         self.assertIn("bank", form.fields)
         self.assertIn("type", form.fields)
         self.assertIn("country", form.fields)
+        # Must NOT be present in update:
         self.assertNotIn("initial_balance", form.fields)
         self.assertNotIn("balance", form.fields)
         self.assertNotIn("active", form.fields)
@@ -43,12 +47,16 @@ class AccountFormsTests(TestCase):
         form = AccountCreateForm(data=data)
         self.assertTrue(form.is_valid(), form.errors)
         obj = form.save(commit=False)
+        obj.owner = self.user  # normally set in view
         obj.save()
         self.assertTrue(obj.active)
         self.assertEqual(obj.balance, Decimal("123.45"))
 
 class AccountModelTests(TestCase):
     def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="u@example.com", password="pass12345")
+        self.client.force_login(self.user)
         self.type = AccountType.objects.create(name="Checking")
         self.country = Country.objects.create(code="pt", currency_code="eur", currency_name="Euro")
         self.bank = Bank.objects.create(name="Test Bank")
@@ -57,6 +65,7 @@ class AccountModelTests(TestCase):
         acc = Account.objects.create(
             bank=self.bank,
             type=self.type,
+            owner=self.user,
             country=self.country,
             initial_balance=Decimal("100.00"),
             balance=None,  # ensure defaulting happens
@@ -68,6 +77,7 @@ class AccountModelTests(TestCase):
         acc = Account.objects.create(
             bank=self.bank,
             type=self.type,
+            owner=self.user,
             country=self.country,  # lower setUp values
             initial_balance=Decimal("0.00"),
             balance=None,
@@ -81,6 +91,7 @@ class AccountModelTests(TestCase):
         acc = Account.objects.create(
             bank=self.bank,
             type=self.type,
+            owner=self.user,
             country=self.country,
             initial_balance=Decimal("10.00"),
             balance=None,
@@ -97,11 +108,11 @@ class AccountModelTests(TestCase):
     def test_queryset_active_only_convention(self):
         active = Account.objects.create(
             bank=self.bank, type=self.type, country=self.country,
-            initial_balance=Decimal("1.00"), balance=None
+            initial_balance=Decimal("1.00"), balance=None, owner=self.user
         )
         inactive = Account.objects.create(
             bank=self.bank, type=self.type, country=self.country,
-            initial_balance=Decimal("2.00"), balance=None
+            initial_balance=Decimal("2.00"), balance=None, owner=self.user
         )
         inactive.delete()  # soft delete
 
@@ -121,14 +132,14 @@ class AccountViewsTests(TestCase):
 
         self.acc = Account.objects.create(
             bank=self.bank, type=self.type, country=self.country,
-            initial_balance=Decimal("50.00"), balance=None
+            initial_balance=Decimal("50.00"), balance=None, owner=self.user
         )
 
     def test_list_view_shows_only_active(self):
         # Make an inactive account
         inactive = Account.objects.create(
             bank=self.bank, type=self.type, country=self.country,
-            initial_balance=Decimal("20.00"), balance=None
+            initial_balance=Decimal("20.00"), balance=None, owner=self.user
         )
         inactive.delete()  # soft delete
 
@@ -181,3 +192,42 @@ class AccountViewsTests(TestCase):
         self.country.save()
         resp = self.client.get(reverse("accounts:list"))
         self.assertContains(resp, "€", html=False)
+
+class AccountOwnershipTests(TestCase):
+    def setUp(self):
+        U = get_user_model()
+        self.u1 = U.objects.create_user(email="u1@example.com", password="pass12345")
+        self.u2 = U.objects.create_user(email="u2@example.com", password="pass12345")
+        self.type = AccountType.objects.create(name="Checking")
+        self.country = Country.objects.create(code="PT", currency_code="EUR", currency_name="Euro")
+        self.bank = Bank.objects.create(name="Bank Z")
+
+        # u1's account
+        self.acc_u1 = Account.objects.create(
+            owner=self.u1, bank=self.bank, type=self.type, country=self.country,
+            initial_balance=Decimal("10.00"), balance=Decimal("10.00"),
+        )
+
+    def test_list_shows_only_own_accounts(self):
+        self.client.force_login(self.u2)
+        resp = self.client.get(reverse("accounts:list"))
+        self.assertNotContains(resp, str(self.acc_u1.bank), html=False)
+
+    def test_cannot_edit_or_delete_foreign_account(self):
+        self.client.force_login(self.u2)
+        resp = self.client.get(reverse("accounts:edit", args=[self.acc_u1.id]))
+        self.assertEqual(resp.status_code, 404)  # filtered by queryset
+        resp2 = self.client.post(reverse("accounts:delete", args=[self.acc_u1.id]))
+        self.assertEqual(resp2.status_code, 404)       
+
+    def test_create_binds_owner(self):
+        self.client.force_login(self.u2)
+        resp = self.client.post(reverse("accounts:create"), {
+            "bank": self.bank.id,
+            "type": self.type.id,
+            "country": self.country.id,
+            "initial_balance": "12.34",
+        }, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        acc = Account.objects.latest("id")
+        self.assertEqual(acc.owner, self.u2)         
