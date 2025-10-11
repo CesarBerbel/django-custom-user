@@ -28,22 +28,42 @@
   <div class="container">
     {% include "partials/toasts.html" %}
     <header class="d-flex justify-content-between align-items-center pb-2 mb-3 border-bottom">
-    <h1 class="h3 m-0">{% block header %}Config Starter{% endblock %}</h1>
+      <div class="d-flex align-items-center gap-4">
+        <h1 class="h3 m-0">{% block header %}Config Starter{% endblock %}</h1>
 
-    <nav class="d-flex align-items-center gap-2">
-      {% if user.is_authenticated %}
-        <span class="text-muted small">Hello, {{ user.email }}</span>
-        <a href="{% url 'users:profile' %}" class="btn btn-outline-primary btn-sm">Profile</a>
-        <form method="post" action="{% url 'users:logout' %}" class="d-inline">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-primary btn-sm">Logout</button>
-        </form>
-      {% else %}
-        <a href="{% url 'users:login' %}" class="btn btn-primary btn-sm">Login</a>
-        <a href="{% url 'users:register' %}" class="btn btn-outline-primary btn-sm">Register</a>
-      {% endif %}
-    </nav>
-  </header>
+        <!-- Menu Principal (só aparece se o usuário estiver logado) -->
+        {% if user.is_authenticated %}
+        <ul class="nav nav-pills">
+          <li class="nav-item">
+            <a href="{% url 'core:home' %}" class="nav-link {% if request.resolver_match.view_name == 'core:home' %}active{% endif %}">
+              Dashboard
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="{% url 'accounts:list' %}" class="nav-link {% if request.resolver_match.app_name == 'accounts' %}active{% endif %}">
+              Accounts
+            </a>
+          </li>
+        </ul>
+        {% endif %}
+      </div>
+
+
+      <nav class="d-flex align-items-center gap-2">
+        {% if user.is_authenticated %}
+          <span class="text-muted small">Hello, {{ user.email }}</span>
+          <a href="{% url 'users:profile' %}" class="btn btn-outline-primary btn-sm">Profile</a>
+          <form method="post" action="{% url 'users:logout' %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm">Logout</button>
+          </form>
+        {% else %}
+          <a href="{% url 'users:login' %}" class="btn btn-primary btn-sm">Login</a>
+          <a href="{% url 'users:register' %}" class="btn btn-outline-primary btn-sm">Register</a>
+        {% endif %}
+      </nav>
+
+    </header>
 
     <main>
       {% block content %}
@@ -63,5 +83,6 @@
     crossorigin="anonymous"
   ></script>
   <script src="{% static 'core/js/scripts.js' %}"></script>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>
