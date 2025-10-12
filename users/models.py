@@ -59,3 +59,9 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return self.email
+
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.lower()
+            self.email = self.__class__.objects.normalize_email(self.email)
+        super().save(*args, **kwargs)
