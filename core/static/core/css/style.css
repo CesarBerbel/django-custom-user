@@ -23,6 +23,8 @@ body {
     padding: 2rem;
     display: flex;
     justify-content: center;
+    font-size: 0.9rem;
+    background-color: #f8f9fa;
 }
 
 .container {
@@ -39,6 +41,10 @@ header {
     border-bottom: 1px solid var(--border);
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
+}
+
+header h1 {
+    font-size: 1.5rem; /* A bit smaller than the default h3 */
 }
 
 footer {
@@ -83,3 +89,44 @@ button:hover { filter: brightness(0.95); }
 .toast-msg.error   { border-color: #ef444455; }
 .toast-msg.warning { border-color: #f59e0b55; }
 .toast-msg.info    { border-color: #3b82f655; }
+
+/* Titles inside cards */
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+/* Headers of specific sections like Calendar/Tasks */
+.card-body h6 {
+    font-size: 0.95rem;
+    color: #6c757d; /* Muted text color */
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table td,
+.table th {
+    padding: 0.65rem; /* Reduce cell padding */
+    vertical-align: middle;
+}
+
+.table th {
+    font-weight: 500;
+    color: #495057;
+}
+
+/* Lists (used for Calendar and Tasks) */
+.list-group-item {
+    padding: 0.65rem 0; /* Reduce padding on list items */
+    border: none;
+    border-bottom: 1px solid #dee2e6;
+}
+.list-group-item:last-child {
+    border-bottom: none;
+}
+
+@media (min-width: 1200px) {
+.container {
+max-width: 70%;
+}
+}
