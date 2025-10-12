@@ -44,6 +44,26 @@
               Accounts
             </a>
           </li>
+          <!-- Arquivo: templates/base.html -->
+          <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle {% if request.resolver_match.app_name == 'transactions' %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  Transactions
+              </a>
+              <ul class="dropdown-menu">
+                  <!-- Itens de listagem -->
+                  <li><a class="dropdown-item" href="{% url 'transactions:expense_list' %}"><i class="bi bi-wallet-fill me-2"></i>Expenses</a></li>
+                  <li><a class="dropdown-item" href="{% url 'transactions:income_list' %}"><i class="bi bi-cash-stack me-2"></i>Incomes</a></li>
+                  <li><a class="dropdown-item" href="{% url 'transactions:transfer_list' %}"><i class="bi bi-arrow-left-right me-2"></i>Transfers</a></li>
+                  
+                  <!-- Separador -->
+                  <li><hr class="dropdown-divider"></li>
+                  
+                  <!-- Itens de criação -->
+                  <li><a class="dropdown-item text-danger" href="{% url 'transactions:expense_create' %}"><i class="bi bi-dash-circle me-2"></i>New Expense</a></li>
+                  <li><a class="dropdown-item text-success" href="{% url 'transactions:income_create' %}"><i class="bi bi-plus-circle me-2"></i>New Income</a></li>
+                  <li><a class="dropdown-item text-info" href="{% url 'transactions:transfer_create' %}"><i class="bi bi-shuffle me-2"></i>New Transfer</a></li>
+              </ul>
+          </li>
         </ul>
         {% endif %}
       </div>
