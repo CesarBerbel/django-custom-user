@@ -1,9 +1,11 @@
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum
+from django.db.models import Sum, Q
+from django.utils import timezone
 import json
 
+from transactions.models import Transaction 
 from accounts.models import Account
 from appointments.models import GoogleCredentials
 from appointments.services import get_upcoming_events
@@ -35,6 +37,18 @@ def home_view(request: HttpRequest) -> HttpResponse:
         upcoming_google_tasks = appointments_data.get('tasks', [])
     # --- FIM DA NOVA LÓGICA ---
 
+    latest_transactions = Transaction.objects.filter(
+        owner=request.user,
+        status__in=[Transaction.Status.COMPLETED, Transaction.Status.OVERDUE],
+    ).order_by('-date', '-created_at')[:5]
+
+    # 3. Busca as 5 próximas transações pendentes/vencidas, ordenadas pela data mais próxima
+    upcoming_transactions = Transaction.objects.filter(
+        owner=request.user,
+        status=Transaction.Status.PENDING,
+        date__gte=timezone.now().date() # Somente as do futuro ou de hoje
+    ).order_by('date')[:5]
+
     context = {
         "title": "Dashboard",
         "accounts": accounts,
@@ -44,5 +58,7 @@ def home_view(request: HttpRequest) -> HttpResponse:
         "google_connected": google_connected,
         "upcoming_calendar_events": upcoming_calendar_events, # Nova variável de contexto
         "upcoming_google_tasks": upcoming_google_tasks,     # Nova variável de contexto
+        "latest_transactions": latest_transactions,
+        "upcoming_transactions": upcoming_transactions,
     }
     return render(request, "core/index.html", context)

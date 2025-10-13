@@ -130,3 +130,56 @@ class TransferForm(TransactionBaseForm):
         if commit:
             instance.save()
         return instance
+    
+class CategoryForm(forms.ModelForm):
+    class Meta:
+        model = Category
+        fields = ['name', 'type', 'icon', 'color']
+        widgets = {
+            'color': forms.TextInput(attrs={'type': 'color'}), # Usa o seletor de cores do HTML5
+        }
+
+    def __init__(self, *args, **kwargs):
+        # 1. Remova o argumento 'user' de kwargs antes de qualquer outra coisa
+        user = kwargs.pop('user', None)
+
+        # 2. Chame o método pai __init__ com kwargs limpo
+        super().__init__(*args, **kwargs)
+
+        # 3. Agora podemos usar self.user com segurança
+        if user is None:
+            raise ValueError("CategoryForm requires a 'user' argument.")
+        self.user = user
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.layout = Layout(
+            FloatingField('name'),
+            FloatingField('type'),
+            Row(
+                Column(FloatingField('icon'), css_class='col-md-6'),
+                Column('color', css_class='col-md-6 d-flex align-items-center'), # Classe customizada para alinhar
+                css_class='g-2'
+            )
+        )
+
+    def clean_name(self):
+        # Normaliza o nome para evitar duplicatas como "Comida" e "comida"
+        return self.cleaned_data['name'].capitalize()    
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        name = cleaned_data.get('name')
+        type = cleaned_data.get('type')
+
+        if name and type:
+            query = Category.objects.filter(
+                owner=self.user,
+                name__iexact=name.strip(),
+                type=type
+            )
+            if self.instance and self.instance.pk:
+                query = query.exclude(pk=self.instance.pk)
+
+            if query.exists():
+                raise ValidationError("A category with this name and type already exists.")
+        return cleaned_data    

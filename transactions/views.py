@@ -1,11 +1,11 @@
-from django.views.generic import CreateView, ListView
+from django.views.generic import CreateView, ListView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.shortcuts import get_object_or_404
 from django.contrib import messages
 
-from .models import Transaction
-from .forms import IncomeForm, ExpenseForm, TransferForm
+from .models import Transaction, Category
+from .forms import IncomeForm, ExpenseForm, TransferForm, CategoryForm
 from accounts.models import Account
 
 # --- VIEWS DE LISTAGEM ---
@@ -101,3 +101,61 @@ class TransferCreateView(TransactionCreateView):
         context = super().get_context_data(**kwargs)
         context['cancel_url'] = reverse_lazy('transactions:transfer_list')
         return context
+    
+
+# --- VIEWS DE CATEGORIAS ---
+class CategoryListView(LoginRequiredMixin, ListView):
+    model = Category
+    template_name = 'transactions/category_list.html'
+    context_object_name = 'categories'
+
+    def get_queryset(self):
+        return Category.objects.filter(owner=self.request.user)
+
+class CategoryCreateView(LoginRequiredMixin, CreateView):
+    model = Category
+    form_class = CategoryForm
+    template_name = 'transactions/category_form.html'
+    success_url = reverse_lazy('transactions:category_list')
+
+    # NOVO: Passa o usuário para o formulário
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        form.instance.owner = self.request.user
+        messages.success(self.request, "Category created successfully.")
+        return super().form_valid(form)
+
+class CategoryUpdateView(LoginRequiredMixin, UpdateView):
+    model = Category
+    form_class = CategoryForm
+    template_name = 'transactions/category_form.html'
+    success_url = reverse_lazy('transactions:category_list')
+    
+    # NOVO: Passa o usuário para o formulário
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_queryset(self):
+        return Category.objects.filter(owner=self.request.user)
+        
+    def form_valid(self, form):
+        messages.success(self.request, "Category updated successfully.")
+        return super().form_valid(form)
+
+class CategoryDeleteView(LoginRequiredMixin, DeleteView):
+    model = Category
+    template_name = 'transactions/category_confirm_delete.html'
+    success_url = reverse_lazy('transactions:category_list')
+    
+    def get_queryset(self):
+        return Category.objects.filter(owner=self.request.user)
+        
+    def form_valid(self, form):
+        messages.warning(self.request, "Category deleted successfully.")
+        return super().form_valid(form)    

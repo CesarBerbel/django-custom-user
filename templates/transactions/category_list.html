@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block header %}Manage Categories{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+    <a href="{% url 'transactions:category_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> New Category
+    </a>
+</div>
+<div class="card">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead>
+          <tr>
+            <th>Icon</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category in categories %}
+          <tr>
+            <td><i class="{{ category.icon|default:'bi-tag' }} fs-5" style="color: {{ category.color }};"></i></td>
+            <td>{{ category.name }}</td>
+            <td><span class="badge bg-secondary-subtle text-secondary-emphasis">{{ category.get_type_display }}</span></td>
+            <td class="text-end">
+              <a href="{% url 'transactions:category_edit' category.pk %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+              <a href="{% url 'transactions:category_delete' category.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted">No categories found. Create your first one!</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
