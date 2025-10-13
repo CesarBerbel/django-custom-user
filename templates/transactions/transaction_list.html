@@ -1,0 +1,73 @@
+<!-- Arquivo: templates/transactions/transaction_list.html -->
+{% extends "base.html" %}
+
+{% block title %}
+    {% if account %}
+        Transactions for {{ account.bank }}
+    {% elif transaction_type %}
+        {{ transaction_type }}s
+    {% else %}
+        All Transactions
+    {% endif %}
+{% endblock %}
+
+{% block header %}
+  {% if account %}
+    Transactions for {{ account.bank }}
+  {% elif transaction_type %}
+    Your {{ transaction_type }}s
+  {% else %}
+    All Transactions
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>From</th>
+                <th>To</th>
+                <th class="text-end">Value</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tx in transactions %}
+            <tr>
+                <td>{{ tx.date|date:"Y-m-d" }}</td>
+                <td>
+                    <span class="badge 
+                        {% if tx.type == 'INCOME' %}bg-success-subtle text-success-emphasis{% endif %}
+                        {% if tx.type == 'EXPENSE' %}bg-danger-subtle text-danger-emphasis{% endif %}
+                        {% if tx.type == 'TRANSFER' %}bg-info-subtle text-info-emphasis{% endif %}
+                    ">{{ tx.get_type_display }}</span>
+                </td>
+                <td>{{ tx.description }}</td>
+                <td>{{ tx.category.name|default:"-" }}</td>
+                <td>{{ tx.origin_account.bank|default:"-" }}</td>
+                <td>{{ tx.destination_account.bank|default:"-" }}</td>
+                <td class="text-end fw-bold">{{ tx.value|stringformat:".2f" }}</td>
+                <td>
+                     <span class="badge 
+                        {% if tx.status == 'PENDING' %}bg-warning-subtle text-warning-emphasis{% endif %}
+                        {% if tx.status == 'COMPLETED' %}bg-success-subtle text-success-emphasis{% endif %}
+                        {% if tx.status == 'OVERDUE' %}bg-danger-subtle text-danger-emphasis{% endif %}
+                    ">{{ tx.get_status_display }}</span>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted">No transactions found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- TODO: Adicionar paginação -->
+{% endblock %}

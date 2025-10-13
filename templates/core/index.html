@@ -38,6 +38,98 @@ Arquivo: templates/core/index.html
       {% endfor %}
     </div>
 
+    <!-- ############  BLOCO DE WIDGETS DE TRANSAÇÕES - VERSÃO CORRIGIDA E FINAL  ############ -->
+    <div class="row mt-4">
+      <!-- Coluna da esquerda: Próximas Transações -->
+      <div class="col-lg-6">
+          <div class="card h-100">
+              <div class="card-body">
+                  <h6 class="border-bottom pb-2 mb-3">
+                      <i class="bi bi-hourglass-split me-2"></i>Upcoming Pending Transactions
+                  </h6>
+                  <ul class="list-group list-group-flush">
+                      {% for tx in upcoming_transactions %}
+                          <li class="list-group-item d-flex justify-content-between align-items-center">
+                              <div>                                  
+                                  <strong class="d-block">
+                                    <i class="{{ tx.category.icon|default:'bi-tag' }} fs-5" style="color: {{ tx.category.color|default:'#6c757d' }};"></i>
+                                    {{ tx.description }} - {{ tx.type }}</strong>
+                                  <!-- LÓGICA DE STATUS REMOVIDA DAQUI, APENAS EXIBE A DATA -->
+                                  <small class="text-muted">
+                                      Due on {{ tx.date|date:"M. d, Y" }}
+                                  </small>
+                              </div>
+                              <span class="fw-bold">
+                                  {% if tx.origin_account %}
+                                      {% money tx.value tx.origin_account.country %}
+                                  {% elif tx.destination_account %}
+                                      {% money tx.value tx.destination_account.country %}
+                                  {% else %}
+                                      {{ tx.value|stringformat:".2f" }}
+                                  {% endif %}
+                              </span>
+                          </li>
+                      {% empty %}
+                          <li class="list-group-item text-muted small">No upcoming pending transactions.</li>
+                      {% endfor %}
+                  </ul>
+              </div>
+          </div>
+      </div>
+      <!-- Coluna da direita: Últimas Transações -->
+      <div class="col-lg-6 mb-4 mb-lg-0">
+          <div class="card h-100">
+              <div class="card-body">
+                  <h6 class="border-bottom pb-2 mb-3">
+                      <i class="bi bi-clock-history me-2"></i>Recent Activity
+                  </h6>
+                  <ul class="list-group list-group-flush">
+                      {% for tx in latest_transactions %}
+                          <li class="list-group-item d-flex justify-content-between align-items-center">
+                              <div>
+                                  
+                                  <strong class="d-block">
+                                    <i class="{{ tx.category.icon|default:'bi-tag' }} fs-5" style="color: {{ tx.category.color|default:'#6c757d' }};"></i>
+                                    {{ tx.description }} - {{ tx.type }}</strong>
+                                  <!-- LÓGICA DE STATUS CORRIGIDA E ADICIONADA AQUI -->
+                                  <small class="text-muted">
+                                      {{ tx.date|date:"M. d, Y" }}
+                                      
+                                      <!-- Exibe o badge se não for 'Completed' -->
+                                      {% if tx.status != 'COMPLETED' %}
+                                      <span class="badge rounded-pill 
+                                          {% if tx.status == 'OVERDUE' %}bg-danger-subtle text-danger-emphasis{% endif %}
+                                      ">{{ tx.get_status_display }}</span>
+                                      {% else %}
+                                      <span class="badge rounded-pill 
+                                          {% if tx.status == 'COMPLETED' %}bg-success-subtle text-success-emphasis{% endif %}
+                                      ">{{ tx.get_status_display }}</span>
+                                      {% endif %}
+                                  </small>
+                              </div>
+                              <span class="fw-bold 
+                                  {% if tx.type == 'EXPENSE' or tx.status == 'OVERDUE' %}text-danger{% elif tx.type == 'INCOME' %}text-success{% endif %}
+                              ">
+                                  {% if tx.type == 'EXPENSE' %}-{% else %}+{% endif %}
+                                  {% if tx.origin_account %}
+                                      {% money tx.value tx.origin_account.country %}
+                                  {% elif tx.destination_account %}
+                                      {% money tx.value tx.destination_account.country %}
+                                  {% else %}
+                                      {{ tx.value|stringformat:".2f" }}
+                                  {% endif %}
+                              </span>
+                          </li>
+                      {% empty %}
+                          <li class="list-group-item text-muted small">No recent activity found.</li>
+                      {% endfor %}
+                  </ul>
+              </div>
+          </div>
+      </div>
+    </div>
+    <!-- ############ FIM DO BLOCO CORRIGIDO ############ -->
+
     <!-- Accounts Table -->
     <div class="mt-4">
       <h3 class="h4 mb-3">Your Accounts</h3>

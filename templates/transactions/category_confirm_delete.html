@@ -1,0 +1,16 @@
+<!-- templates/transactions/category_confirm_delete.html -->
+{% extends "base.html" %}
+{% block title %}Confirm Delete{% endblock %}
+{% block header %}Delete Category{% endblock %}
+
+{% block content %}
+<div class="alert alert-danger">
+  Are you sure you want to delete the category "<strong>{{ object.name }}</strong>"?
+  <p class="mt-2">This action cannot be undone. Transactions previously associated with this category will not be deleted but will no longer have a category assigned.</p>
+</div>
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-danger">Confirm Delete</button>
+  <a href="{% url 'transactions:category_list' %}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

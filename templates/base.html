@@ -44,19 +44,59 @@
               Accounts
             </a>
           </li>
+          <!-- Arquivo: templates/base.html -->
+          <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle {% if request.resolver_match.app_name == 'transactions' %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  Transactions
+              </a>
+              <ul class="dropdown-menu">
+                  <!-- Itens de listagem -->
+                  <li><a class="dropdown-item" href="{% url 'transactions:expense_list' %}"><i class="bi bi-wallet-fill me-2"></i>Expenses</a></li>
+                  <li><a class="dropdown-item" href="{% url 'transactions:income_list' %}"><i class="bi bi-cash-stack me-2"></i>Incomes</a></li>
+                  <li><a class="dropdown-item" href="{% url 'transactions:transfer_list' %}"><i class="bi bi-arrow-left-right me-2"></i>Transfers</a></li>
+                  
+                  <!-- Separador -->
+                  <li><hr class="dropdown-divider"></li>
+                  
+                  <!-- Itens de criação -->
+                  <li><a class="dropdown-item text-danger" href="{% url 'transactions:expense_create' %}"><i class="bi bi-dash-circle me-2"></i>New Expense</a></li>
+                  <li><a class="dropdown-item text-success" href="{% url 'transactions:income_create' %}"><i class="bi bi-plus-circle me-2"></i>New Income</a></li>
+                  <li><a class="dropdown-item text-info" href="{% url 'transactions:transfer_create' %}"><i class="bi bi-shuffle me-2"></i>New Transfer</a></li>
+              </ul>
+          </li>
         </ul>
         {% endif %}
       </div>
 
 
+      <!-- Lado Direito: Controles do Usuário -->
       <nav class="d-flex align-items-center gap-2">
         {% if user.is_authenticated %}
-          <span class="text-muted small">Hello, {{ user.email }}</span>
-          <a href="{% url 'users:profile' %}" class="btn btn-outline-primary btn-sm">Profile</a>
-          <form method="post" action="{% url 'users:logout' %}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-primary btn-sm">Logout</button>
-          </form>
+          <div class="dropdown">
+            <button class="btn btn-outline-secondary d-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-person-fill fs-5"></i>
+              <span class="d-none d-md-inline ms-2">{{ user.email }}</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{% url 'users:profile' %}"><i class="bi bi-person-circle me-2"></i>Profile</a></li>
+              <li>
+                <h6 class="dropdown-header">Settings</h6>
+              </li>
+              <li><a class="dropdown-item" href="{% url 'transactions:category_list' %}"><i class="bi bi-tags-fill me-2"></i>Categories</a></li>
+              <!-- NOVOS LINKS ABAIXO -->
+              <li><a class="dropdown-item" href="{% url 'accounts:type_list' %}"><i class="bi bi-wallet2 me-2"></i>Account Types</a></li>
+              <li><a class="dropdown-item" href="{% url 'accounts:country_list' %}"><i class="bi bi-globe-americas me-2"></i>Countries & Currencies</a></li>
+              <!-- FIM DOS NOVOS LINKS -->
+              
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form method="post" action="{% url 'users:logout' %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right me-2"></i>Logout</button>
+                </form>
+              </li>
+            </ul>
+          </div>
         {% else %}
           <a href="{% url 'users:login' %}" class="btn btn-primary btn-sm">Login</a>
           <a href="{% url 'users:register' %}" class="btn btn-outline-primary btn-sm">Register</a>

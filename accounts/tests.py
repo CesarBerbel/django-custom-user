@@ -231,3 +231,73 @@ class AccountOwnershipTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         acc = Account.objects.latest("id")
         self.assertEqual(acc.owner, self.u2)         
+
+
+# accounts/tests.py
+
+# ... (imports existentes e outras classes de teste) ...
+
+class AccountTypeManagementTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="settings@test.com", password="pw")
+        self.client.force_login(self.user)
+        self.type = AccountType.objects.create(name="Savings")
+
+    def test_type_list_view(self):
+        url = reverse("accounts:type_list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Savings")
+
+    def test_type_create_view(self):
+        url = reverse("accounts:type_create")
+        response = self.client.post(url, {"name": "Investment"}, follow=True)
+        self.assertRedirects(response, reverse("accounts:type_list"))
+        self.assertTrue(AccountType.objects.filter(name="Investment").exists())
+        self.assertContains(response, "created successfully")
+
+    def test_type_update_view(self):
+        url = reverse("accounts:type_edit", args=[self.type.pk])
+        response = self.client.post(url, {"name": "Emergency Fund"}, follow=True)
+        self.assertRedirects(response, reverse("accounts:type_list"))
+        self.type.refresh_from_db()
+        self.assertEqual(self.type.name, "Emergency Fund")
+
+    def test_type_delete_view(self):
+        url = reverse("accounts:type_delete", args=[self.type.pk])
+        response = self.client.post(url, follow=True)
+        self.assertRedirects(response, reverse("accounts:type_list"))
+        self.assertFalse(AccountType.objects.filter(pk=self.type.pk).exists())
+
+class CountryManagementTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="country@test.com", password="pw")
+        self.client.force_login(self.user)
+        self.country = Country.objects.create(code="BR", currency_code="BRL", currency_name="Real", currency_symbol="R$")
+
+    def test_country_list_view(self):
+        url = reverse("accounts:country_list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "BR")
+
+    def test_country_create_view(self):
+        url = reverse("accounts:country_create")
+        data = {"code": "PT", "currency_code": "EUR", "currency_name": "Euro", "currency_symbol": "€"}
+        response = self.client.post(url, data, follow=True)
+        self.assertRedirects(response, reverse("accounts:country_list"))
+        self.assertTrue(Country.objects.filter(code="PT").exists())
+
+    def test_country_update_view(self):
+        url = reverse("accounts:country_edit", args=[self.country.pk])
+        data = {"code": "BR", "currency_code": "BRL", "currency_name": "Brazilian Real", "currency_symbol": "R$"}
+        response = self.client.post(url, data, follow=True)
+        self.country.refresh_from_db()
+        self.assertEqual(self.country.currency_name, "Brazilian Real")
+
+    def test_country_delete_view(self):
+        url = reverse("accounts:country_delete", args=[self.country.pk])
+        response = self.client.post(url, follow=True)
+        self.assertFalse(Country.objects.filter(pk=self.country.pk).exists())

@@ -21,6 +21,9 @@
         {% money acc.balance acc.country %}
       </td>
       <td class="text-end">
+        <a href="{% url 'transactions:list_by_account' acc.pk %}" class="btn btn-sm btn-outline-secondary" title="View Transactions">
+            <i class="bi bi-card-list"></i>
+        </a>
         <a href="{% url 'accounts:edit' acc.pk %}" class="btn btn-sm btn-outline-primary">
           <i class="bi bi-pencil"></i>
         </a>

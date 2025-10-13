@@ -1,0 +1,41 @@
+<!-- templates/accounts/country_list.html -->
+{% extends "base.html" %}
+{% block title %}Countries & Currencies{% endblock %}
+{% block header %}Manage Countries & Currencies{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+    <a href="{% url 'accounts:country_create' %}" class="btn btn-primary"><i class="bi bi-plus-circle"></i> New Country</a>
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Currency Code</th>
+                    <th>Currency Name</th>
+                    <th>Symbol</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for country in countries %}
+                <tr>
+                    <td>{{ country.code }}</td>
+                    <td>{{ country.currency_code }}</td>
+                    <td>{{ country.currency_name }}</td>
+                    <td>{{ country.currency_symbol }}</td>
+                    <td class="text-end">
+                        <a href="{% url 'accounts:country_edit' country.pk %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                        <a href="{% url 'accounts:country_delete' country.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted">No countries found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
