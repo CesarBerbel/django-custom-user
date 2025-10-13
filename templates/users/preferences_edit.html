@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Preferences{% endblock %}
+{% block header %}Your Preferences{% endblock %}
+
+{% block content %}
+  <div class="card mx-auto" style="max-width: 600px;">
+    <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        {{ form|crispy }}
+        
+        <!-- Bloco de botões adicionado abaixo -->
+        <div class="mt-4 pt-3 border-top">
+          <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle me-2"></i>Save Preferences
+          </button>
+          
+          <!-- Botão Voltar opcional -->
+          <a href="{{ request.META.HTTP_REFERER|default:request.resolver_match.view_name }}" class="btn btn-outline-secondary ms-2">
+              <i class="bi bi-arrow-left-circle me-2"></i>Back
+          </a>
+        </div>
+        
+      </form>
+    </div>
+  </div>
+{% endblock %}

@@ -9,7 +9,9 @@ from django.utils.translation import gettext_lazy as _
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Row, Column, Submit, HTML, Div
 from crispy_bootstrap5.bootstrap5 import FloatingField
-
+from .models import User, UserPreferences
+from crispy_forms.layout import Layout, Submit, Div
+from accounts.models import Country
 
 class CustomUserCreationForm(UserCreationForm):
     """User creation form that only asks for email and password."""
@@ -87,3 +89,22 @@ class ProfileUpdateForm(forms.ModelForm):
         if qs.exists():
             raise forms.ValidationError("This email is already in use.")
         return email
+
+class UserPreferencesForm(forms.ModelForm):
+    class Meta:
+        model = UserPreferences
+        fields = ['preferred_currency']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['preferred_currency'].queryset = Country.objects.order_by('currency_code')
+        self.fields['preferred_currency'].label = "Preferred currency for total balance"
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.layout = Layout(
+            'preferred_currency',
+            Div(
+                Submit('submit', 'Save Preferences', css_class='btn btn-primary'),
+                css_class="mt-3",
+            )
+        )

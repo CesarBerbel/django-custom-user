@@ -16,6 +16,8 @@ from django.contrib.auth.views import PasswordChangeView
 from .forms import ProfileUpdateForm
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
+from .forms import ProfileUpdateForm, UserPreferencesForm
+from .models import UserPreferences
 
 
 class RegisterView(AnonymousRequiredMixin, CreateView):
@@ -130,3 +132,18 @@ class PasswordResetCompleteCustomView(PasswordResetCompleteView):
     Final 'success' page after password was changed.
     """
     template_name = "users/password_reset_complete.html"    
+
+class PreferencesEditView(LoginRequiredMixin, UpdateView):
+    model = UserPreferences
+    form_class = UserPreferencesForm
+    template_name = "users/preferences_edit.html"
+    success_url = reverse_lazy("users:preferences_edit")
+
+    def get_object(self, queryset=None):
+        # Obtém ou cria as preferências para o usuário logado
+        preferences, created = UserPreferences.objects.get_or_create(user=self.request.user)
+        return preferences
+    
+    def form_valid(self, form):
+        messages.success(self.request, "Preferences saved successfully.")
+        return super().form_valid(form)    

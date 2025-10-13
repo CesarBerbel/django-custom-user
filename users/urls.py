@@ -3,7 +3,8 @@ from .views import (
     RegisterView, EmailLoginView, EmailLogoutView,
     ProfileView, ProfileEditView, ProfilePasswordChangeView,
     PasswordResetRequestView, PasswordResetDoneCustomView,
-    PasswordResetConfirmCustomView, PasswordResetCompleteCustomView,
+    PasswordResetConfirmCustomView, PasswordResetCompleteCustomView, 
+    PreferencesEditView
 )
 
 app_name = "users"
@@ -22,4 +23,6 @@ urlpatterns = [
     path("password-reset/done/", PasswordResetDoneCustomView.as_view(), name="password_reset_done"),
     path("reset/<uidb64>/<token>/", PasswordResetConfirmCustomView.as_view(), name="password_reset_confirm"),
     path("reset/complete/", PasswordResetCompleteCustomView.as_view(), name="password_reset_complete"),
+    
+    path("preferences/", PreferencesEditView.as_view(), name="preferences_edit"),
 ]
