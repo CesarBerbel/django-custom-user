@@ -3,6 +3,10 @@ from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from accounts.models import Country
 
 
 class UserManager(BaseUserManager):
@@ -65,3 +69,27 @@ class User(AbstractUser):
             self.email = self.email.lower()
             self.email = self.__class__.objects.normalize_email(self.email)
         super().save(*args, **kwargs)
+
+
+class UserPreferences(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="preferences"
+    )
+    # Moeda na qual o patrimônio total será exibido
+    preferred_currency = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        help_text="The currency to display the total net worth in."
+    )
+    
+    def __str__(self):
+        return f"Preferences for {self.user.email}"
+
+# SINAL (Signal): Cria um UserPreferences automaticamente para cada novo User
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_preferences(sender, instance, created, **kwargs):
+    if created:
+        UserPreferences.objects.create(user=instance)        

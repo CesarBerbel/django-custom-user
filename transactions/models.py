@@ -23,7 +23,11 @@ class Category(models.Model):
     # Rule 1.3: Categoria é específica por tipo
     type = models.CharField(max_length=7, choices=TransactionType.choices) 
     # Rule 5.2: Cor e ícone para a categoria
-    icon = models.CharField(max_length=50, blank=True, help_text="e.g., Bootstrap Icons class like 'bi-house-fill' See more in https://icons.getbootstrap.com/")
+    icon = models.CharField(
+        max_length=50, 
+        blank=True, 
+        help_text="e.g., Bootstrap Icons class like 'bi-house-fill' See more in https://icons.getbootstrap.com/"
+    )
     color = models.CharField(max_length=7, blank=True, help_text="Hex color code, e.g., #FF5733")
 
     class Meta:
