@@ -1,73 +1,172 @@
-<!-- Arquivo: templates/transactions/transaction_list.html -->
 {% extends "base.html" %}
+{% load money_extras %}
 
 {% block title %}
-    {% if account %}
-        Transactions for {{ account.bank }}
-    {% elif transaction_type %}
-        {{ transaction_type }}s
-    {% else %}
-        All Transactions
-    {% endif %}
-{% endblock %}
-
-{% block header %}
   {% if account %}
-    Transactions for {{ account.bank }}
+    Statement for {{ account.bank }}
   {% elif transaction_type %}
-    Your {{ transaction_type }}s
-  {% else %}
-    All Transactions
+    {{ transaction_type }}s
   {% endif %}
 {% endblock %}
 
-{% block content %}
-<div class="table-responsive">
-    <table class="table table-hover">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>From</th>
-                <th>To</th>
-                <th class="text-end">Value</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for tx in transactions %}
-            <tr>
-                <td>{{ tx.date|date:"Y-m-d" }}</td>
-                <td>
-                    <span class="badge 
-                        {% if tx.type == 'INCOME' %}bg-success-subtle text-success-emphasis{% endif %}
-                        {% if tx.type == 'EXPENSE' %}bg-danger-subtle text-danger-emphasis{% endif %}
-                        {% if tx.type == 'TRANSFER' %}bg-info-subtle text-info-emphasis{% endif %}
-                    ">{{ tx.get_type_display }}</span>
-                </td>
-                <td>{{ tx.description }}</td>
-                <td>{{ tx.category.name|default:"-" }}</td>
-                <td>{{ tx.origin_account.bank|default:"-" }}</td>
-                <td>{{ tx.destination_account.bank|default:"-" }}</td>
-                <td class="text-end fw-bold">{{ tx.value|stringformat:".2f" }}</td>
-                <td>
-                     <span class="badge 
-                        {% if tx.status == 'PENDING' %}bg-warning-subtle text-warning-emphasis{% endif %}
-                        {% if tx.status == 'COMPLETED' %}bg-success-subtle text-success-emphasis{% endif %}
-                        {% if tx.status == 'OVERDUE' %}bg-danger-subtle text-danger-emphasis{% endif %}
-                    ">{{ tx.get_status_display }}</span>
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="8" class="text-center text-muted">No transactions found.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+{% block header %}
+  <div class="d-flex align-items-center justify-content-between w-100">
+    <div>
+      {% if account %}
+        Statement for <span class="text-primary">{{ account.bank }}</span>
+      {% elif transaction_type %}
+        Your {{ transaction_type }}s
+      {% endif %}
+    </div>
+    <!-- NAVEGAÇÃO DE MÊS NO CABEÇALHO -->
+    <div class="d-flex align-items-center">
+      {% if account %}
+        <a href="{% url 'transactions:list_by_account_specific' account_id previous_month.year previous_month.month %}" class="btn btn-sm btn-outline-secondary" style="margin-left: 30px;">
+      {% else %}
+        <a href="{% url 'transactions:'|add:base_url_name|add:'_specific' previous_month.year previous_month.month %}" class="btn btn-sm btn-outline-secondary" style="margin-left: 30px;">
+      {% endif %}
+        <i class="bi bi-chevron-left"></i>
+      </a>
+      <h5 class="mb-0 mx-3">{{ current_month|date:"F Y" }}</h5>
+      {% if account %}
+        <a href="{% url 'transactions:list_by_account_specific' account_id next_month.year next_month.month %}" class="btn btn-sm btn-outline-secondary">
+      {% else %}
+        <a href="{% url 'transactions:'|add:base_url_name|add:'_specific' next_month.year next_month.month %}" class="btn btn-sm btn-outline-secondary">
+      {% endif %}
+        <i class="bi bi-chevron-right"></i>
+      </a>
+    </div>
+  </div>
+{% endblock %}
 
-<!-- TODO: Adicionar paginação -->
+{% block content %}
+
+<!-- RENDERIZAÇÃO CONDICIONAL DOS RESUMOS -->
+
+{% if account %}
+    <!-- MODO EXTRATO DE CONTA (com Variáveis Corretas) -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-12">
+        <div class="card h-100">
+          <div class="card-header bg-light">
+              <h6 class="card-title text-muted mb-0"><i class="bi bi-receipt me-2"></i>Account Statement: Flow</h6>
+          </div>
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>
+                    Starting Balance
+                    <small class="text-muted">({{ starting_balance_type }})</small>
+                </span>
+                <span>{% money summary.starting_balance account.country %}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center text-success border-top pt-2">
+                <span>+ Incomes this month (Completed):</span>
+                <!-- NOME DA VARIÁVEL CORRIGIDO -->
+                <span>{% money summary.income_this_month_completed account.country %}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center text-danger pb-2">
+                <span>- Expenses/Transfers out this month (Completed):</span>
+                <!-- NOME DA VARIÁVEL CORRIGIDO -->
+                <span>{% money summary.expense_this_month_completed account.country %}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center border-top pt-2">
+                <strong>Current Actual Balance (end of month):</strong>
+                <strong class="fs-5 {% if summary.current_balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% money summary.current_balance account.country %}
+                </strong>
+            </div>
+            <div class="d-flex justify-content-between align-items-center text-muted small mt-2">
+              <span>End of month forecasted balance:</span>
+              <span class="fw-bold">{% money summary.forecasted_balance account.country %}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+{% else %}
+  <!-- MODO LISTA POR TIPO (Permanece como estava) -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6 class="card-title text-muted"><i class="bi bi-check-circle-fill text-success"></i> Completed This Month</h6>
+          <p class="fs-4 fw-bold {% if transaction_type == 'EXPENSE' %}text-danger{% else %}text-success{% endif %}">
+            {% money summary.completed preferred_currency %}
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6 class="card-title text-muted"><i class="bi bi-clock-fill text-primary"></i> Forecasted This Month</h6>
+          <p class="fs-4 fw-bold {% if transaction_type == 'EXPENSE' %}text-danger{% else %}text-success{% endif %}">
+            {% money summary.forecasted preferred_currency %}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<!-- TABELA DE TRANSAÇÕES DO MÊS -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th class="text-end">Value</th>
+                        <th>Status</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- *** ESTRUTURA DO LOOP FOR DEFINITIVAMENTE CORRIGIDA *** -->
+                    {% for tx in transactions %}
+                    <tr>
+                        <td>{{ tx.date|date:"Y-m-d" }}</td>
+                        <td>
+                            <span class="badge {% if tx.type == 'INCOME' %}bg-success-subtle text-success-emphasis{% elif tx.type == 'EXPENSE' %}bg-danger-subtle text-danger-emphasis{% else %}bg-info-subtle text-info-emphasis{% endif %}">
+                                {{ tx.get_type_display }}
+                            </span>
+                        </td>
+                        <td>{{ tx.description }}</td>
+                        <td>{{ tx.category.name|default:"-" }}</td>
+                        <td>{{ tx.origin_account.bank|default:"-" }}</td>
+                        <td>{{ tx.destination_account.bank|default:"-" }}</td>
+                        <td class="text-end fw-bold">{% if tx.origin_account %}{% money tx.value tx.origin_account.country %}{% elif tx.destination_account %}{% money tx.value tx.destination_account.country %}{% else %}{{ tx.value|stringformat:".2f" }}{% endif %}</td>
+                        <td>
+                             <span class="badge {% if tx.status == 'PENDING' %}bg-warning-subtle text-warning-emphasis{% elif tx.status == 'COMPLETED' %}bg-success-subtle text-success-emphasis{% else %}bg-danger-subtle text-danger-emphasis{% endif %}">
+                                 {{ tx.get_status_display }}
+                             </span>
+                        </td>
+                        <td class="text-center">
+                            {% if tx.status == 'PENDING' or tx.status == 'OVERDUE' %}
+                                <form method="post" action="{% url 'transactions:complete' tx.pk %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Mark as Completed">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                </form>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="9" class="text-center py-4 text-muted">No transactions found for this period.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

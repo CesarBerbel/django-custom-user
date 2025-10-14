@@ -1,17 +1,24 @@
 from __future__ import annotations
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from django import template
 
 register = template.Library()
 
-def _fmt_amount(amount: Decimal | float | int) -> str:
-    """Format to 2 decimal places with HALF_UP."""
-    if amount is None:
-        return "0.00"
-    if not isinstance(amount, Decimal):
-        amount = Decimal(str(amount))
+def _fmt_amount(amount: Decimal | float | int | None) -> str:
+    """Formata para 2 casas decimais com HALF_UP, de forma segura."""
+    # Checagem de segurança robusta
+    if amount is None or amount == '':
+        amount = Decimal("0") # Trata None e string vazia como zero
+    
+    try:
+        if not isinstance(amount, Decimal):
+            amount = Decimal(str(amount))
+    except (TypeError, ValueError, InvalidOperation):
+        # Se, mesmo assim, a conversão falhar, retorne um erro amigável em vez de quebrar
+        print(f"DEBUG: Could not convert amount '{amount}' (type: {type(amount)}) to Decimal.")
+        return "ERR"
+
     q = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    # basic thousands separator (international style); adjust if needed
     return f"{q:,.2f}"
 
 @register.simple_tag
