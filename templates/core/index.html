@@ -9,7 +9,24 @@ Arquivo: templates/core/index.html
 {% block title %}Dashboard{% endblock %}
 
 {% block header %}
-  {{ title }}
+  <!-- CABEÇALHO COM NAVEGAÇÃO DE MÊS -->
+  <div class="d-flex align-items-center justify-content-between w-100">
+    <span>
+        {{ title }}
+        <span class="badge bg-light text-dark ms-2">
+            {% if is_current_or_past_month %}Actual{% else %}Forecasted{% endif %}
+        </span>
+    </span>
+    <div class="d-flex align-items-center">
+        <a href="{% url 'core:home_specific' previous_month.year previous_month.month %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i>
+        </a>
+        <h5 class="mb-0 mx-3">{{ report_date|date:"F Y" }}</h5>
+        <a href="{% url 'core:home_specific' next_month.year next_month.month %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+  </div>
 {% endblock %}
 
 {% block content %}
@@ -26,16 +43,19 @@ Arquivo: templates/core/index.html
     <div class="row g-3">
       {% if total_net_worth %}
       <div class="col-12">
-          <div class="card bg-primary text-white">
+          <div class="card {% if is_current_or_past_month %}bg-primary{% else %}bg-info{% endif %} text-white">
               <div class="card-body text-center">
-                  <h5 class="card-title text-white-50">Total Net Worth</h5>
+                  <h5 class="card-title text-white-50">
+                    Total {% if is_current_or_past_month %}Actual{% else %}Forecasted{% endif %} Net Worth
+                  </h5>
                   <p class="card-text display-5 fw-bold">
                       {% money total_net_worth country=preferred_currency %}
                   </p>
               </div>
           </div>
       </div>
-      {% endif %}  
+      {% endif %}
+    
 
       {% for item in currency_totals %}
         <div class="col-md-6 col-lg-4">
@@ -53,7 +73,10 @@ Arquivo: templates/core/index.html
    
     <!-- Accounts Table -->
     <div class="mt-4">
-      <h3 class="h4 mb-3">Your Accounts</h3>
+      <h3 class="h4 mb-3">
+        Account Balances
+        <small class="text-muted fs-6">({% if is_current_or_past_month %}Actual{% else %}Forecasted{% endif %} as of {{ report_date|date:"Y-m-d" }})</small>
+      </h3>
       {% include "accounts/_account_table.html" with accounts=accounts %}
     </div>
 

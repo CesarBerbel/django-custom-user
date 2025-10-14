@@ -5,4 +5,5 @@ app_name = "core"
 
 urlpatterns = [
     path("", home_view, name="home"),
+    path("<int:year>/<int:month>/", home_view, name="home_specific"),
 ]
