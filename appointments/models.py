@@ -20,3 +20,6 @@ class GoogleCredentials(models.Model):
 
     def __str__(self):
         return f"Credentials for {self.user.email}"
+
+    class Meta:
+        verbose_name_plural = "Google Credentials"  
