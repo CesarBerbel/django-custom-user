@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+    {% load crispy_forms_tags %}
+
+    {% block title %}New Installment Transaction{% endblock %}
+    {% block header %}Create Installment Transaction{% endblock %}
+    
+    {% block content %}
+      <div class.card mx-auto" style="max-width:800px;">
+        <div class="card-body">
+            <p class="text-muted">Use this form to create a transaction with multiple installments. Each installment will be created as a separate pending transaction.</p>
+            <form method="post">
+              {% csrf_token %}
+              {% crispy form %}
+              <div class="mt-4 pt-3 border-top">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-2"></i>Create Installments</button>
+                <a href="{{ request.META.HTTP_REFERER|default:request.resolver_match.view_name }}" class="btn btn-outline-secondary ms-2"><i class="bi bi-x-circle me-2"></i>Cancel</a>
+              </div>
+            </form>
+        </div>
+      </div>
+    {% endblock %}

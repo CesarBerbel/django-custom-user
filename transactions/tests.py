@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from accounts.models import Account, Bank, AccountType, Country
-from .models import Transaction, Category
+from .models import Transaction, Category, RecurringTransaction
 from .forms import TransferForm
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
@@ -449,3 +449,123 @@ class TransactionListViewLogicTests(TestCase):
 
         # Saldo previsto = 825 - 200 (conta pendente do mês futuro) = 625
         self.assertEqual(summary['forecasted_balance'], Decimal('625.00'))        
+
+
+
+# NOVA CLASSE DE TESTE PARA TRANSAÇÕES PARCELADAS
+class InstallmentCreationTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="installment@test.com", password="pw")
+        self.client.force_login(self.user)
+        
+        country = Country.objects.create(code="IT", currency_code="EUR")
+        bank = Bank.objects.create(name="Installment Bank")
+        acc_type = AccountType.objects.create(name="Credit Card")
+        self.account = Account.objects.create(
+            owner=self.user, country=country, bank=bank, type=acc_type, initial_balance=0
+        )
+        self.category = Category.objects.create(
+            owner=self.user, name="Electronics", type=Category.TransactionType.EXPENSE
+        )
+        
+        # A URL agora está em um formulário integrado, não em uma página separada.
+        # Vamos testar a criação de despesas.
+        self.create_url = reverse("transactions:expense_create")
+
+    def test_create_monthly_installments(self):
+        """Testa se a criação de 12 parcelas mensais funciona."""
+        start_date = timezone.now().date()
+        post_data = {
+            'description': 'New Laptop',
+            'value': 100.00,
+            'date': start_date.strftime('%Y-%m-%d'),
+            'origin_account': self.account.pk,
+            'category': self.category.pk,
+            'status': Transaction.Status.PENDING,
+            
+            # Campos de parcelamento
+            'is_installment': 'on', # Checkbox marcado
+            'installments_total': 12,
+            'frequency': RecurringTransaction.Frequency.MONTHLY,
+        }
+        
+        response = self.client.post(self.create_url, post_data, follow=True)
+        
+        # Verifica se o redirecionamento foi para a lista correta
+        self.assertRedirects(response, reverse("transactions:expense_list"))
+        
+        # 1. Verifica se a "receita" foi criada
+        self.assertEqual(RecurringTransaction.objects.count(), 1)
+        rec_tx = RecurringTransaction.objects.first()
+        self.assertEqual(rec_tx.owner, self.user)
+        self.assertEqual(rec_tx.installments_total, 12)
+
+        # 2. Verifica se as 12 transações foram criadas
+        self.assertEqual(Transaction.objects.count(), 12)
+        
+        # 3. Verifica os detalhes da primeira e da última parcela
+        first_tx = Transaction.objects.order_by('date').first()
+        last_tx = Transaction.objects.order_by('date').last()
+        
+        self.assertEqual(first_tx.installment_number, 1)
+        self.assertEqual(first_tx.description, "New Laptop [1/12]")
+        self.assertEqual(first_tx.date, start_date)
+        self.assertEqual(first_tx.status, Transaction.Status.PENDING)
+        self.assertEqual(first_tx.value, Decimal('100.00'))
+
+        self.assertEqual(last_tx.installment_number, 12)
+        self.assertEqual(last_tx.description, "New Laptop [12/12]")
+        # A data da última parcela deve ser 11 meses após a primeira
+        expected_last_date = start_date + relativedelta(months=11)
+        self.assertEqual(last_tx.date, expected_last_date)
+        
+    def test_create_weekly_installments(self):
+        """Testa se a criação de 4 parcelas semanais funciona."""
+        start_date = timezone.now().date()
+        post_data = {
+            'description': 'Groceries',
+            'value': 50.00,
+            'date': start_date.strftime('%Y-%m-%d'),
+            'origin_account': self.account.pk,
+            'category': self.category.pk,
+            'status': Transaction.Status.PENDING,
+            'is_installment': 'on',
+            'installments_total': 4,
+            'frequency': RecurringTransaction.Frequency.WEEKLY,
+        }
+
+        self.client.post(self.create_url, post_data)
+        
+        self.assertEqual(Transaction.objects.count(), 4)
+        
+        first_tx = Transaction.objects.order_by('date').first()
+        last_tx = Transaction.objects.order_by('date').last()
+        
+        # A última parcela deve ser 3 semanas após a primeira
+        expected_last_date = start_date + relativedelta(weeks=3)
+        self.assertEqual(last_tx.date, expected_last_date)
+
+    def test_single_transaction_is_created_if_not_installment(self):
+        """Testa se apenas uma transação é criada se o checkbox não for marcado."""
+        post_data = {
+            'description': 'Single Coffee',
+            'value': 5.00,
+            'date': timezone.now().date().strftime('%Y-%m-%d'),
+            'origin_account': self.account.pk,
+            'category': self.category.pk,
+            'status': Transaction.Status.PENDING,
+            # 'is_installment': 'off' ou ausente
+        }
+        
+        self.client.post(self.create_url, post_data)
+        
+        # Apenas UMA transação deve existir
+        self.assertEqual(Transaction.objects.count(), 1)
+        
+        # NENHUMA transação recorrente deve ser criada
+        self.assertEqual(RecurringTransaction.objects.count(), 0)
+
+        tx = Transaction.objects.first()
+        self.assertIsNone(tx.recurring_transaction)
+        self.assertIsNone(tx.installment_number)        

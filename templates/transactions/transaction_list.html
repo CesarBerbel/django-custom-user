@@ -144,7 +144,12 @@
                                 {{ tx.get_type_display }}
                             </span>
                         </td>
-                        <td>{{ tx.description }}</td>
+                        <td>
+                          {{ tx.description }}
+                          {% if tx.installment_number %}
+                              <!-- <small class="text-muted d-block">{{ tx.description }}</small> -->
+                          {% endif %}
+                        </td>
                         <td>{{ tx.category.name|default:"-" }}</td>
                         <td>{{ tx.origin_account.bank|default:"-" }}</td>
                         <td>{{ tx.destination_account.bank|default:"-" }}</td>
