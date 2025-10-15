@@ -12,7 +12,7 @@ Arquivo: templates/core/index.html
   <!-- CABEÇALHO COM NAVEGAÇÃO DE MÊS -->
   <div class="d-flex align-items-center justify-content-between w-100">
     <span>
-        {{ title }}
+        {% if is_current_or_past_month %}{{ title }}{% else %}<a href="/">Go to Home</a>{% endif %}
         <span class="badge bg-light text-dark ms-2">
             {% if is_current_or_past_month %}Actual{% else %}Forecasted{% endif %}
         </span>

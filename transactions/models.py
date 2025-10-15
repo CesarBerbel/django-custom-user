@@ -85,6 +85,10 @@ class Transaction(models.Model):
     # Outros campos obrigatórios
     value = models.DecimalField(max_digits=14, decimal_places=2)
     date = models.DateField(default=timezone.now)
+    completion_date = models.DateField(
+        null=True, blank=True,
+        help_text="Date the transaction was actually completed/paid"
+    )    
     description = models.CharField(max_length=255, default="Sem descrição")
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -119,11 +123,15 @@ class Transaction(models.Model):
         
         # A mágica acontece aqui: ajusta o saldo apenas se o status MUDOU para COMPLETED
         if self.status == self.Status.COMPLETED and old_status != self.Status.COMPLETED:
+            self.completion_date = timezone.now().date() # Define a data de efetivação
             self._process_completion()
         
         # Se uma transação que estava COMPLETED for revertida (ex: para PENDING)
         elif old_status == self.Status.COMPLETED and self.status != self.Status.COMPLETED:
+            self.completion_date = None # Limpa a data de efetivação
             self._reverse_completion(old_transaction)
+
+        super().save(*args, **kwargs) # Salva novamente para garantir que as mudanças sejam persistidas
 
     def _process_completion(self):
         """Applies the transaction's effect on account balances."""
