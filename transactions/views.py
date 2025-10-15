@@ -128,48 +128,41 @@ class TransactionByAccountListView(BaseTransactionListView):
         user = self.request.user
         account = get_object_or_404(Account, pk=self.kwargs['account_id'], owner=user)
         
-        is_future_month = self.report_date.year > timezone.now().year or \
-                          (self.report_date.year == timezone.now().year and self.report_date.month > timezone.now().month)
+        is_future_month = self.report_date > timezone.now().date().replace(day=1)
         end_of_previous_month = self.report_date - relativedelta(days=1)
-        
-        # --- LÓGICA DE CÁLCULO DO SALDO INICIAL CORRIGIDA ---
 
         starting_balance = 0
         
         if is_future_month:
-            # Para meses FUTUROS, o saldo inicial é o PREVISTO (inclui pendentes)
+            # (A lógica para o futuro já está correta, usando a combinação de Q objects)
             context['starting_balance_type'] = 'Forecasted'
-            
-            # Filtro para transações completadas no passado
             completed_past_q = Q(status=Transaction.Status.COMPLETED, completion_date__lte=end_of_previous_month)
-            # Filtro para transações pendentes/vencidas no passado
             pending_past_q = Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__lte=end_of_previous_month)
             
-            # Combina os filtros com um OR
-            past_incomes = Transaction.objects.filter(
-                Q(owner=user), Q(destination_account=account),
-                completed_past_q | pending_past_q
-            ).aggregate(total=Sum('value'))['total'] or 0
+            past_incomes = Transaction.objects.filter(Q(owner=user), Q(destination_account=account), completed_past_q | pending_past_q).aggregate(total=Sum('value'))['total'] or 0
+            past_expenses = Transaction.objects.filter(Q(owner=user), Q(origin_account=account), completed_past_q | pending_past_q).aggregate(total=Sum('value'))['total'] or 0
             
-            past_expenses = Transaction.objects.filter(
-                Q(owner=user), Q(origin_account=account),
-                completed_past_q | pending_past_q
-            ).aggregate(total=Sum('value'))['total'] or 0
-
             starting_balance = account.initial_balance + past_incomes - past_expenses
 
         else:
-            # Para meses CORRENTES ou PASSADOS, o saldo inicial é o REAL (apenas completadas)
+            # --- LÓGICA CORRIGIDA PARA MÊS ATUAL/PASSADO ---
             context['starting_balance_type'] = 'Actual'
 
-            past_incomes = Transaction.objects.filter(
-                owner=user, destination_account=account, status=Transaction.Status.COMPLETED,
+            # A query precisa filtrar APENAS transações COMPLETADAS
+            # com data de efetivação ATÉ o final do mês anterior.
+            past_transactions = Transaction.objects.filter(
+                owner=user,
+                status=Transaction.Status.COMPLETED,
                 completion_date__lte=end_of_previous_month
+            )
+
+            # Agora agregamos a partir dessa base de transações
+            past_incomes = past_transactions.filter(
+                destination_account=account
             ).aggregate(total=Sum('value'))['total'] or 0
             
-            past_expenses = Transaction.objects.filter(
-                owner=user, origin_account=account, status=Transaction.Status.COMPLETED,
-                completion_date__lte=end_of_previous_month
+            past_expenses = past_transactions.filter(
+                origin_account=account
             ).aggregate(total=Sum('value'))['total'] or 0
             
             starting_balance = account.initial_balance + past_incomes - past_expenses

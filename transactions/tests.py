@@ -1,13 +1,17 @@
 #
 # Arquivo: transactions/tests.py
 #
+import datetime
 from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from accounts.models import Account, Bank, AccountType, Country
 from .models import Transaction, Category
-from .forms import IncomeForm, ExpenseForm, TransferForm
+from .forms import TransferForm
+from django.utils import timezone
+from dateutil.relativedelta import relativedelta
+from django.core.management import call_command
 
 class TransactionModelTests(TestCase):
     def setUp(self):
@@ -30,7 +34,7 @@ class TransactionModelTests(TestCase):
         self.cat_income = Category.objects.create(owner=self.user, name='Salary', type=Category.TransactionType.INCOME)
         self.cat_expense = Category.objects.create(owner=self.user, name='Food', type=Category.TransactionType.EXPENSE)
 
-    # --- Testes de Lógica de Atualização de Saldo (MUITO IMPORTANTES) ---
+#     # --- Testes de Lógica de Atualização de Saldo (MUITO IMPORTANTES) ---
 
     def test_expense_completion_deducts_balance(self):
         """Creates a completed expense and checks if origin balance decreases."""
@@ -267,3 +271,181 @@ class CategoryManagementTests(TestCase):
         url = reverse("transactions:category_delete", args=[self.category1.pk])
         self.client.post(url)
         self.assertFalse(Category.objects.filter(pk=self.category1.pk).exists())        
+
+class TransactionModelLogicTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="txlogic@test.com", password="pw")
+        country = Country.objects.create(code="XX", currency_code="XXX")
+        bank = Bank.objects.create(name="Bank Test")
+        acc_type = AccountType.objects.create(name="Current")
+        self.account = Account.objects.create(owner=self.user, country=country, bank=bank, type=acc_type, initial_balance=1000)
+
+    def test_completion_date_is_set_on_save(self):
+        """Testa se a completion_date é definida quando o status muda para COMPLETED."""
+        tx = Transaction.objects.create(
+            owner=self.user,
+            description="Test Pending",
+            value=100,
+            origin_account=self.account,
+            type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.PENDING,
+            date=timezone.now().date()
+        )
+        self.assertIsNone(tx.completion_date)
+
+        # Efetiva a transação
+        tx.status = Transaction.Status.COMPLETED
+        tx.save()
+        tx.refresh_from_db()
+
+        self.assertIsNotNone(tx.completion_date)
+        self.assertEqual(tx.completion_date, timezone.now().date())
+        
+        # Testa se o saldo da conta é atualizado
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.balance, Decimal('900.00'))
+
+    def test_completion_date_is_cleared_on_revert(self):
+        """Testa se a completion_date é limpa se o status é revertido."""
+        tx = Transaction.objects.create(
+            owner=self.user,
+            description="Test Completed",
+            value=50,
+            origin_account=self.account,
+            type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.COMPLETED
+        )
+        tx.refresh_from_db() # Para garantir que save() foi chamado
+        self.assertIsNotNone(tx.completion_date)
+
+        # Reverte o status
+        tx.status = Transaction.Status.PENDING
+        tx.save()
+        tx.refresh_from_db()
+
+        self.assertIsNone(tx.completion_date)
+        
+        # Testa se o saldo da conta foi revertido
+        self.account.refresh_from_db()
+
+        self.assertEqual(self.account.balance, Decimal('1000.00'))
+
+class ManagementCommandsTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="cmd@test.com", password="pw")
+
+    def test_update_overdue_command(self):
+        """Testa se o comando 'update_overdue' funciona corretamente."""
+        yesterday = timezone.now().date() - datetime.timedelta(days=1)
+        
+        # Transação que DEVE ser atualizada
+        tx_overdue = Transaction.objects.create(
+            owner=self.user, value=10, type=Transaction.TransactionType.EXPENSE,
+            date=yesterday, status=Transaction.Status.PENDING
+        )
+        
+        # Transação que NÃO deve ser atualizada (data futura)
+        tx_future = Transaction.objects.create(
+            owner=self.user, value=10, type=Transaction.TransactionType.EXPENSE,
+            date=timezone.now().date() + datetime.timedelta(days=1),
+            status=Transaction.Status.PENDING
+        )
+        
+        # Transação que NÃO deve ser atualizada (status diferente)
+        tx_completed = Transaction.objects.create(
+            owner=self.user, value=10, type=Transaction.TransactionType.EXPENSE,
+            date=yesterday, status=Transaction.Status.COMPLETED
+        )
+        
+        # Executa o comando
+        call_command('update_overdue')
+
+        tx_overdue.refresh_from_db()
+        tx_future.refresh_from_db()
+        tx_completed.refresh_from_db()
+
+        self.assertEqual(tx_overdue.status, Transaction.Status.OVERDUE)
+        self.assertEqual(tx_future.status, Transaction.Status.PENDING)
+        self.assertEqual(tx_completed.status, Transaction.Status.COMPLETED)        
+
+class TransactionListViewLogicTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="listlogic@test.com", password="pw")
+        self.client.force_login(self.user)
+        country = Country.objects.create(code="LL", currency_code="YYY")
+        bank = Bank.objects.create(name="List Bank")
+        acc_type = AccountType.objects.create(name="Checking")
+        self.account = Account.objects.create(
+            owner=self.user, country=country, bank=bank, type=acc_type, 
+            initial_balance=1000
+        )
+        self.exp_cat = Category.objects.create(owner=self.user, name="Services", type=Category.TransactionType.EXPENSE)
+        
+        # Define datas de referência
+        last_month = timezone.now().date().replace(day=1) - datetime.timedelta(days=1)
+        this_month = timezone.now().date().replace(day=1)
+        next_month = this_month + relativedelta(months=1)
+
+        # Cenário de teste:
+        # 1. Transação do mês passado, efetivada no mês passado (impacta o saldo inicial)
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, category=self.exp_cat,
+            value=100, type=Transaction.TransactionType.EXPENSE,
+            date=last_month, completion_date=last_month, status=Transaction.Status.COMPLETED,
+            description="Last Month Bill"
+        )
+        # 2. Transação deste mês, efetivada neste mês
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, category=self.exp_cat,
+            value=50, type=Transaction.TransactionType.EXPENSE,
+            date=this_month, completion_date=this_month, status=Transaction.Status.COMPLETED,
+            description="This Month Completed"
+        )
+        # 3. Transação deste mês, pendente (deve contar no previsto)
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, category=self.exp_cat,
+            value=25, type=Transaction.TransactionType.EXPENSE,
+            date=this_month, status=Transaction.Status.PENDING,
+            description="This Month Pending"
+        )
+        # 4. Transação do mês que vem, pendente (só deve aparecer na projeção)
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, category=self.exp_cat,
+            value=200, type=Transaction.TransactionType.EXPENSE,
+            date=next_month, status=Transaction.Status.PENDING,
+            description="Next Month Forecast"
+        )
+
+    def test_account_statement_current_month(self):
+        """Testa o extrato da conta para o mês corrente."""
+        url = reverse("transactions:list_by_account", args=[self.account.pk])
+        response = self.client.get(url)
+        summary = response.context['summary']
+
+        # Saldo inicial = 1000 (inicial) - 100 (conta do mês passado) = 900
+        self.assertEqual(summary['starting_balance'], Decimal('900.00'))
+        
+        # Saldo atual = 900 - 50 (efetivada este mês) = 850
+        self.assertEqual(summary['current_balance'], Decimal('850.00'))
+        
+        # Saldo previsto = 900 - 50 (efetivada) - 25 (pendente) = 825
+        self.assertEqual(summary['forecasted_balance'], Decimal('825.00'))
+
+    def test_account_statement_future_month(self):
+        """Testa a projeção do extrato da conta para um mês futuro."""
+        next_month = timezone.now().date().replace(day=1) + relativedelta(months=1)
+        url = reverse("transactions:list_by_account_specific", args=[self.account.pk, next_month.year, next_month.month])
+        response = self.client.get(url)
+        summary = response.context['summary']
+        
+        # Saldo inicial do mês futuro = Saldo PREVISTO do mês corrente = 825
+        self.assertEqual(summary['starting_balance'], Decimal('825.00'))
+        
+        # Saldo atual do mês futuro (não há efetivadas) = saldo inicial = 825
+        self.assertEqual(summary['current_balance'], Decimal('825.00'))
+
+        # Saldo previsto = 825 - 200 (conta pendente do mês futuro) = 625
+        self.assertEqual(summary['forecasted_balance'], Decimal('625.00'))        

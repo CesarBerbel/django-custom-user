@@ -109,29 +109,33 @@ class Transaction(models.Model):
 
     # Rule 4.2: Lógica de atualização de saldo
     def save(self, *args, **kwargs):
-        # Para evitar dupla contagem, primeiro salvamos o objeto para obter um PK
-        # e rastrear o estado anterior do 'status'
         is_new = self._state.adding
+        old_status = None
         
         if not is_new:
-            old_transaction = Transaction.objects.get(pk=self.pk)
-            old_status = old_transaction.status
-        else:
-            old_status = None
-            
-        super().save(*args, **kwargs) # Salva a transação primeiro
-        
-        # A mágica acontece aqui: ajusta o saldo apenas se o status MUDOU para COMPLETED
-        if self.status == self.Status.COMPLETED and old_status != self.Status.COMPLETED:
-            self.completion_date = timezone.now().date() # Define a data de efetivação
-            self._process_completion()
-        
-        # Se uma transação que estava COMPLETED for revertida (ex: para PENDING)
-        elif old_status == self.Status.COMPLETED and self.status != self.Status.COMPLETED:
-            self.completion_date = None # Limpa a data de efetivação
-            self._reverse_completion(old_transaction)
+            old_instance = Transaction.objects.get(pk=self.pk)
+            old_status = old_instance.status
 
-        super().save(*args, **kwargs) # Salva novamente para garantir que as mudanças sejam persistidas
+        # Determina o status
+        status_is_now_completed = self.status == self.Status.COMPLETED
+        status_was_completed = old_status == self.Status.COMPLETED
+        
+        status_changed_to_completed = status_is_now_completed and not status_was_completed
+        status_reverted_from_completed = not status_is_now_completed and status_was_completed
+
+        # A lógica para a data de efetivação agora inclui o caso de criação
+        if status_is_now_completed and self.completion_date is None:
+            self.completion_date = timezone.now().date()
+        elif status_reverted_from_completed:
+            self.completion_date = None
+        
+        super().save(*args, **kwargs)
+
+        # Lógica de saldo pós-save
+        if status_changed_to_completed:
+            self._process_completion()
+        elif status_reverted_from_completed and not is_new:
+            self._reverse_completion(old_instance)
 
     def _process_completion(self):
         """Applies the transaction's effect on account balances."""
