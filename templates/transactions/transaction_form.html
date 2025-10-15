@@ -32,3 +32,33 @@
     </div>
   </form>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const isInstallmentCheckbox = document.getElementById('id_is_installment');
+    const installmentFieldsDiv = document.getElementById('installment-fields');
+
+    function toggleInstallmentFields() {
+        if (isInstallmentCheckbox.checked) {
+            installmentFieldsDiv.classList.remove('d-none');
+            // Torna os campos de parcelamento obrigatórios se a caixa estiver marcada
+            document.getElementById('id_installments_total').required = true;
+            document.getElementById('id_frequency').required = true;
+        } else {
+            installmentFieldsDiv.classList.add('d-none');
+            // Remove a obrigatoriedade se a caixa estiver desmarcada
+            document.getElementById('id_installments_total').required = false;
+            document.getElementById('id_frequency').required = false;
+        }
+    }
+
+    if (isInstallmentCheckbox) {
+        // Verifica o estado inicial ao carregar a página
+        toggleInstallmentFields();
+        // Adiciona o listener para mudanças
+        isInstallmentCheckbox.addEventListener('change', toggleInstallmentFields);
+    }
+});
+</script>
+{% endblock %}

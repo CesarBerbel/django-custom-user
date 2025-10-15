@@ -89,6 +89,16 @@ class Transaction(models.Model):
         null=True, blank=True,
         help_text="Date the transaction was actually completed/paid"
     )    
+
+    recurring_transaction = models.ForeignKey(
+        "RecurringTransaction",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="instances"
+    )
+
+    # NOVO CAMPO para registrar o número da parcela
+    installment_number = models.PositiveIntegerField(null=True, blank=True)        
     description = models.CharField(max_length=255, default="Sem descrição")
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -168,3 +178,35 @@ class Transaction(models.Model):
             old_transaction.destination_account.balance -= old_transaction.value
             old_transaction.origin_account.save(update_fields=['balance'])
             old_transaction.destination_account.save(update_fields=['balance'])
+
+class RecurringTransaction(models.Model):
+    class Frequency(models.TextChoices):
+        DAILY = 'DAILY', 'Daily'
+        WEEKLY = 'WEEKLY', 'Weekly'
+        BIWEEKLY = 'BIWEEKLY', 'Biweekly'
+        MONTHLY = 'MONTHLY', 'Monthly'
+        SEMESTRAL = 'SEMESTRAL', 'Semestral'
+        ANNUALLY = 'ANNUALLY', 'Annually'
+        
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="recurring_transactions")
+    
+    # Modelo para as transações a serem geradas
+    start_date = models.DateField()
+    frequency = models.CharField(max_length=10, choices=Frequency.choices)
+    
+    installments_total = models.PositiveIntegerField()
+    installments_paid = models.PositiveIntegerField(default=1) # Parcela inicial
+
+    value = models.DecimalField(max_digits=14, decimal_places=2, help_text="Value of each installment")
+    description = models.CharField(max_length=255)
+    
+    transaction_type = models.CharField(max_length=8, choices=Transaction.TransactionType.choices)
+    origin_account = models.ForeignKey(Account, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    destination_account = models.ForeignKey(Account, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Installment: {self.description}"            
