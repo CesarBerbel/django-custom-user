@@ -132,7 +132,13 @@
                     <!-- *** ESTRUTURA DO LOOP FOR DEFINITIVAMENTE CORRIGIDA *** -->
                     {% for tx in transactions %}
                     <tr>
-                        <td>{{ tx.date|date:"Y-m-d" }}</td>
+                        <td>
+                            {% if tx.completion_date %}
+                                {{ tx.completion_date|date:"Y-m-d" }}
+                            {% else %}
+                                {{ tx.date|date:"Y-m-d" }}
+                            {% endif %}
+                        </td>
                         <td>
                             <span class="badge {% if tx.type == 'INCOME' %}bg-success-subtle text-success-emphasis{% elif tx.type == 'EXPENSE' %}bg-danger-subtle text-danger-emphasis{% else %}bg-info-subtle text-info-emphasis{% endif %}">
                                 {{ tx.get_type_display }}

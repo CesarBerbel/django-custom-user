@@ -37,14 +37,31 @@ class BaseTransactionListView(LoginRequiredMixin, ListView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset_base(self):
-        """Retorna o queryset base para o mês, filtrado por usuário."""
+        """
+        Retorna o queryset base redefinido para o regime de caixa.
+        - Transações completas são filtradas por `completion_date`.
+        - Transações pendentes/vencidas são filtradas por `date`.
+        """
         user = self.request.user
         start_of_month = self.report_date
         end_of_month = (start_of_month + relativedelta(months=1)) - relativedelta(days=1)
         
-        return Transaction.objects.filter(
-            owner=user,
+        # Filtro para transações EFETIVADAS no mês
+        completed_in_month_q = Q(
+            status=Transaction.Status.COMPLETED,
+            completion_date__range=[start_of_month, end_of_month]
+        )
+        
+        # Filtro para transações PENDENTES no mês (pela data de vencimento)
+        pending_in_month_q = Q(
+            status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE],
             date__range=[start_of_month, end_of_month]
+        )
+        
+        return Transaction.objects.filter(
+            owner=user
+        ).filter(
+            completed_in_month_q | pending_in_month_q
         ).select_related('category', 'origin_account__country', 'destination_account__country')
 
     def get_context_data(self, **kwargs):
@@ -90,70 +107,91 @@ class TransferListView(TransactionTypeListView):
 class TransactionByAccountListView(BaseTransactionListView):
     """View para exibir o extrato de uma conta específica."""
     def get_queryset(self):
-        self.account = get_object_or_404(Account, pk=self.kwargs['account_id'], owner=self.request.user)
-        return self.get_queryset_base().filter(
-            Q(origin_account=self.account) | Q(destination_account=self.account)
-        )
+        user = self.request.user
+        start_of_month = self.report_date
+        end_of_month = (start_of_month + relativedelta(months=1)) - relativedelta(days=1)
+        
+        completed_q = Q(status=Transaction.Status.COMPLETED, completion_date__range=[start_of_month, end_of_month])
+        pending_q = Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__range=[start_of_month, end_of_month])
+        
+        return Transaction.objects.filter(
+            owner=user
+        ).filter(
+            completed_q | pending_q
+        ).select_related(
+            'category', 'origin_account__country', 'destination_account__country'
+        ).order_by('-completion_date', '-date')
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         all_transactions_for_month = self.get_queryset()
         user = self.request.user
+        account = get_object_or_404(Account, pk=self.kwargs['account_id'], owner=user)
         
-        is_future_month = self.report_date > timezone.now().date().replace(day=1)
+        is_future_month = self.report_date.year > timezone.now().year or \
+                          (self.report_date.year == timezone.now().year and self.report_date.month > timezone.now().month)
         end_of_previous_month = self.report_date - relativedelta(days=1)
         
-        starting_balance_qs_filter = {'status': Transaction.Status.COMPLETED}
+        # --- LÓGICA DE CÁLCULO DO SALDO INICIAL CORRIGIDA ---
+
+        starting_balance = 0
+        
         if is_future_month:
-            starting_balance_qs_filter = {'status__in': [
-                Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE
-            ]}
+            # Para meses FUTUROS, o saldo inicial é o PREVISTO (inclui pendentes)
+            context['starting_balance_type'] = 'Forecasted'
+            
+            # Filtro para transações completadas no passado
+            completed_past_q = Q(status=Transaction.Status.COMPLETED, completion_date__lte=end_of_previous_month)
+            # Filtro para transações pendentes/vencidas no passado
+            pending_past_q = Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__lte=end_of_previous_month)
+            
+            # Combina os filtros com um OR
+            past_incomes = Transaction.objects.filter(
+                Q(owner=user), Q(destination_account=account),
+                completed_past_q | pending_past_q
+            ).aggregate(total=Sum('value'))['total'] or 0
+            
+            past_expenses = Transaction.objects.filter(
+                Q(owner=user), Q(origin_account=account),
+                completed_past_q | pending_past_q
+            ).aggregate(total=Sum('value'))['total'] or 0
 
-        past_incomes = Transaction.objects.filter(
-            owner=user, destination_account=self.account, date__lte=end_of_previous_month,
-            **starting_balance_qs_filter
-        ).aggregate(total=Sum('value'))['total'] or 0
-        
-        past_expenses = Transaction.objects.filter(
-            owner=user, origin_account=self.account, date__lte=end_of_previous_month,
-            **starting_balance_qs_filter
-        ).aggregate(total=Sum('value'))['total'] or 0
-        
-        starting_balance = self.account.initial_balance + past_incomes - past_expenses
+            starting_balance = account.initial_balance + past_incomes - past_expenses
 
-        # CÁLCULO DAS MOVIMENTAÇÕES DO MÊS (COMPLETED)
-        income_this_month_completed = all_transactions_for_month.filter(
-            status=Transaction.Status.COMPLETED, destination_account=self.account
-        ).aggregate(total=Sum('value'))['total'] or 0
-        expense_this_month_completed = all_transactions_for_month.filter(
-            status=Transaction.Status.COMPLETED, origin_account=self.account
-        ).aggregate(total=Sum('value'))['total'] or 0
-        
-        # CÁLCULO DAS MOVIMENTAÇÕES DO MÊS (FORECASTED)
-        income_this_month_forecasted = all_transactions_for_month.filter(
-            status__in=[Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE],
-            destination_account=self.account
-        ).aggregate(total=Sum('value'))['total'] or 0
-        expense_this_month_forecasted = all_transactions_for_month.filter(
-            status__in=[Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE],
-            origin_account=self.account
-        ).aggregate(total=Sum('value'))['total'] or 0
+        else:
+            # Para meses CORRENTES ou PASSADOS, o saldo inicial é o REAL (apenas completadas)
+            context['starting_balance_type'] = 'Actual'
 
-        # ADICIONANDO AS VARIÁVEIS CORRETAS AO CONTEXTO
-        context['account'] = self.account
+            past_incomes = Transaction.objects.filter(
+                owner=user, destination_account=account, status=Transaction.Status.COMPLETED,
+                completion_date__lte=end_of_previous_month
+            ).aggregate(total=Sum('value'))['total'] or 0
+            
+            past_expenses = Transaction.objects.filter(
+                owner=user, origin_account=account, status=Transaction.Status.COMPLETED,
+                completion_date__lte=end_of_previous_month
+            ).aggregate(total=Sum('value'))['total'] or 0
+            
+            starting_balance = account.initial_balance + past_incomes - past_expenses
+            
+        # --- FIM DA CORREÇÃO DO SALDO INICIAL ---
+
+        # O resto da lógica de cálculo (movimentações do mês) já estava correta.
+        income_this_month_completed = all_transactions_for_month.filter(status=Transaction.Status.COMPLETED, destination_account=account).aggregate(total=Sum('value'))['total'] or 0
+        expense_this_month_completed = all_transactions_for_month.filter(status=Transaction.Status.COMPLETED, origin_account=account).aggregate(total=Sum('value'))['total'] or 0
+        
+        income_this_month_forecasted = all_transactions_for_month.filter(status__in=[Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE], destination_account=account).aggregate(total=Sum('value'))['total'] or 0
+        expense_this_month_forecasted = all_transactions_for_month.filter(status__in=[Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE], origin_account=account).aggregate(total=Sum('value'))['total'] or 0
+
+        context['account'] = account
         context['account_id'] = self.kwargs['account_id']
-        context['starting_balance_type'] = 'Forecasted' if is_future_month else 'Actual'
-        
-        # --- DICIONÁRIO 'summary' CORRIGIDO ---
         context['summary'] = {
             'starting_balance': starting_balance,
-            'income_this_month_completed': income_this_month_completed,   # Adicionado
-            'expense_this_month_completed': expense_this_month_completed, # Adicionado
+            'income_this_month_completed': income_this_month_completed,
+            'expense_this_month_completed': expense_this_month_completed,
             'current_balance': starting_balance + income_this_month_completed - expense_this_month_completed,
             'forecasted_balance': starting_balance + income_this_month_forecasted - expense_this_month_forecasted
         }
-        # --- FIM DA CORREÇÃO ---
-                
         return context
 
 
