@@ -5,7 +5,7 @@ from django.contrib.auth.forms import AuthenticationForm
 
 # NEW: crispy
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Submit
+from crispy_forms.layout import Layout, Submit, Div, HTML
 from crispy_bootstrap5.bootstrap5 import FloatingField
 
 
@@ -23,10 +23,15 @@ class EmailAuthenticationForm(AuthenticationForm):
 
         self.helper = FormHelper()
         self.helper.form_method = "post"
+        self.helper.form_tag = False
         self.helper.layout = Layout(
             FloatingField("username"),
             FloatingField("password"),
-            Submit("submit", "Sign in", css_class="btn btn-primary"),
+            Div(
+                Submit("submit", "Sign in", css_class="btn-primary"),
+                HTML('<a href="{% url \'users:password_reset\' %}" class="btn btn-link">Forgot password?</a>'),
+                css_class="d-flex align-items-center justify-content-between mt-3"
+            )
         )
 
     def confirm_login_allowed(self, user):

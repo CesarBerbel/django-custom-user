@@ -37,6 +37,7 @@ class TransactionBaseForm(forms.ModelForm):
         self.fields['destination_account'].queryset = Account.objects.filter(owner=self.user, active=True)
         self.helper = FormHelper()
         self.helper.form_method = 'post'
+        self.helper.form_tag = True
 
     # --- NOVO MÉTODO DE VALIDAÇÃO ---
     def clean(self):
@@ -66,7 +67,7 @@ class IncomeForm(TransactionBaseForm):
             FloatingField('description', wrapper_class='mb-2'),
             Row(
                 Column(FloatingField('date', label="Date of first installment"), css_class='col-md-6'),
-                Column(FloatingField('origin_account', label="Account"), css_class='col-md-6'),
+                Column(FloatingField('destination_account', label="Account"), css_class='col-md-6'),
                 css_class='g-2 mb-2'
             ),
             Row(
@@ -85,6 +86,11 @@ class IncomeForm(TransactionBaseForm):
                 # Este id é crucial para o JavaScript
                 id="installment-fields", 
                 css_class="d-none mt-3 p-3 border rounded bg-light"
+            ),
+            # --- BOTÕES RESTAURADOS ABAIXO ---
+            Div(
+                Submit('submit', 'Save Income', css_class='btn btn-primary'),
+                css_class="mt-4 pt-3 border-top"
             )
         )
     
@@ -108,7 +114,7 @@ class ExpenseForm(TransactionBaseForm):
             FloatingField('description', wrapper_class='mb-2'),
             Row(
                 Column(FloatingField('date', label="Date of first installment"), css_class='col-md-6'),
-                Column(FloatingField('destination_account', label="Account"), css_class='col-md-6'),
+                Column(FloatingField('origin_account', label="Account"), css_class='col-md-6'),
                 css_class='g-2 mb-2'
             ),
             Row(
@@ -127,6 +133,11 @@ class ExpenseForm(TransactionBaseForm):
                 # Este id é crucial para o JavaScript
                 id="installment-fields", 
                 css_class="d-none mt-3 p-3 border rounded bg-light"
+            ),
+            # --- BOTÕES RESTAURADOS ABAIXO ---
+            Div(
+                Submit('submit', 'Save Expense', css_class='btn btn-primary'),
+                css_class="mt-4 pt-3 border-top"
             )
         )
     
@@ -157,6 +168,11 @@ class TransferForm(TransactionBaseForm):
                 Column(FloatingField('status'), css_class='col-md-6'),
                 css_class='g-2'
             ),
+            # --- BOTÕES RESTAURADOS ABAIXO ---
+            Div(
+                Submit('submit', 'Save Transfer', css_class='btn btn-primary'),
+                css_class="mt-4 pt-3 border-top"
+            )
         )
     
     def clean(self):

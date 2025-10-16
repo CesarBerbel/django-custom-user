@@ -5,7 +5,7 @@ from django.contrib.auth.views import (
     PasswordResetConfirmView, PasswordResetCompleteView,
     LoginView, LogoutView
 )
-from .forms_password import CustomPasswordChangeForm
+from .forms_password import CustomPasswordChangeForm, CustomPasswordResetForm
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView
@@ -17,6 +17,7 @@ from .forms import ProfileUpdateForm
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from .forms import ProfileUpdateForm, UserPreferencesForm
+from .forms_auth import EmailAuthenticationForm
 from .models import UserPreferences
 
 
@@ -36,7 +37,8 @@ class RegisterView(AnonymousRequiredMixin, CreateView):
 
 class EmailLoginView(AnonymousRequiredMixin, LoginView):
     """Email-based login view (uses AuthenticationForm by default)."""
-    template_name = "users/login.html"
+    template_name = "users/login.html" # NEW
+    form_class = EmailAuthenticationForm  # Custom form with email placeholder
 
     def form_valid(self, form):
         messages.success(self.request, "Welcome back!")
@@ -96,6 +98,7 @@ class PasswordResetRequestView(PasswordResetView):
     """
     Ask user email to send a password reset link.
     """
+    form_class = CustomPasswordResetForm 
     template_name = "users/password_reset.html"
     email_template_name = "users/password_reset_email.txt"
     subject_template_name = "users/password_reset_subject.txt"

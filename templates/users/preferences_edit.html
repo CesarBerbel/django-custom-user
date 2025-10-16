@@ -7,10 +7,10 @@
   <div class="card mx-auto" style="max-width: 600px;">
     <div class="card-body">
       <form method="post">
-        {% csrf_token %}
-        {{ form|crispy }}
+        {% comment %} {% csrf_token %} {% endcomment %}
+        {% crispy form %} 
         
-        <!-- Bloco de botões adicionado abaixo -->
+        {% comment %} <!-- Bloco de botões adicionado abaixo -->
         <div class="mt-4 pt-3 border-top">
           <button type="submit" class="btn btn-primary">
               <i class="bi bi-check-circle me-2"></i>Save Preferences
@@ -20,7 +20,7 @@
           <a href="{{ request.META.HTTP_REFERER|default:request.resolver_match.view_name }}" class="btn btn-outline-secondary ms-2">
               <i class="bi bi-arrow-left-circle me-2"></i>Back
           </a>
-        </div>
+        </div> {% endcomment %}
         
       </form>
     </div>

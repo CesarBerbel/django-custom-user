@@ -69,6 +69,7 @@ class ProfileUpdateForm(forms.ModelForm):
 
         self.helper = FormHelper()
         self.helper.form_method = "post"
+        # self.helper.form_tag = False  # form tag is in the template
         self.helper.layout = Layout(
             FloatingField("email"),
             Row(
@@ -101,10 +102,12 @@ class UserPreferencesForm(forms.ModelForm):
         self.fields['preferred_currency'].label = "Preferred currency for total balance"
         self.helper = FormHelper()
         self.helper.form_method = 'post'
+        self.helper.form_tag = False
         self.helper.layout = Layout(
             'preferred_currency',
             Div(
                 Submit('submit', 'Save Preferences', css_class='btn btn-primary'),
+                HTML('<a href="{% url \'core:home\' %}" class="btn btn-outline-secondary ms-2">Cancel</a>'),
                 css_class="mt-3",
             )
         )
