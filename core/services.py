@@ -75,3 +75,40 @@ def calculate_total_net_worth(accounts, target_currency_code):
     total_in_target_currency = total_in_usd * Decimal(str(rate_from_usd_to_target))
 
     return total_in_target_currency, target_currency_code
+
+def get_conversion_rate(origin_currency, destination_currency):
+    """
+    Obtém a taxa de conversão de uma moeda de origem para uma de destino.
+    Retorna o multiplicador. Ex: se 1 EUR = 1.08 USD, retorna 1.08.
+    """
+    origin_currency = origin_currency.upper()
+    destination_currency = destination_currency.upper()
+
+    if origin_currency == destination_currency:
+        return Decimal("1.0")
+
+    # Usa a função em cache que já busca as taxas com base no USD
+    usd_based_rates = get_exchange_rates('USD')
+    if not usd_based_rates:
+        raise Exception("Could not retrieve exchange rates from the service.")
+    
+    # Taxas em relação ao USD
+    rate_origin_to_usd = usd_based_rates.get(origin_currency)
+    rate_usd_to_destination = usd_based_rates.get(destination_currency)
+
+    if not rate_origin_to_usd or not rate_usd_to_destination:
+        raise Exception(f"Currency not supported: {origin_currency} or {destination_currency}")
+        
+    # Lógica de conversão cruzada (ex: EUR -> BRL via USD)
+    # 1 EUR = X USD  ->  valor_eur / rate_eur_usd
+    # 1 USD = Y BRL  ->  valor_usd * rate_usd_brl
+    # Logo, valor_eur * (rate_usd_brl / rate_eur_usd) = valor_brl
+    
+    # A API v6 retorna as taxas de uma forma mais simples: 1 USD = X EUR, 1 USD = Y BRL
+    # valor_usd = valor_eur / rate_eur
+    # valor_brl = valor_usd * rate_brl
+    # valor_brl = (valor_eur / rate_eur) * rate_brl
+    
+    rate = Decimal(str(rate_usd_to_destination)) / Decimal(str(rate_origin_to_usd))
+    
+    return rate

@@ -54,7 +54,9 @@ def home_view(request: HttpRequest, year=None, month=None) -> HttpResponse:
         expenses = Transaction.objects.filter(
             owner=user, origin_account=account, date__lte=end_of_period, status__in=relevant_statuses
         ).aggregate(total=Sum('value'))['total'] or 0
-        
+
+        print(f"Account: {account}, Initial Balance: {account.initial_balance}, Incomes: {incomes}, Expenses: {expenses}")
+
         # Modifica o atributo .balance do objeto em memória para a view/template
         account.balance = balance + incomes - expenses
 

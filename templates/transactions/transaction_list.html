@@ -151,8 +151,26 @@
                           {% endif %}
                         </td>
                         <td>{{ tx.category.name|default:"-" }}</td>
-                        <td>{{ tx.origin_account.bank|default:"-" }}</td>
-                        <td>{{ tx.destination_account.bank|default:"-" }}</td>
+                        <td>
+                            {% if tx.origin_account %}
+                                <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">
+                                    {{ tx.origin_account }}
+                                </a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+
+                        <!-- CÉLULA "TO" (DESTINO) MODIFICADA -->
+                        <td>
+                            {% if tx.destination_account %}
+                                <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">
+                                    {{ tx.destination_account }}
+                                </a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
                         <td class="text-end fw-bold">{% if tx.origin_account %}{% money tx.value tx.origin_account.country %}{% elif tx.destination_account %}{% money tx.value tx.destination_account.country %}{% else %}{{ tx.value|stringformat:".2f" }}{% endif %}</td>
                         <td>
                              <span class="badge {% if tx.status == 'PENDING' %}bg-warning-subtle text-warning-emphasis{% elif tx.status == 'COMPLETED' %}bg-success-subtle text-success-emphasis{% else %}bg-danger-subtle text-danger-emphasis{% endif %}">

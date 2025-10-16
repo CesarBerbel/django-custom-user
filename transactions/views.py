@@ -4,7 +4,6 @@
 #
 import datetime
 from dateutil.relativedelta import relativedelta
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -14,6 +13,7 @@ from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, ListView, UpdateView, DeleteView
+from core.services import get_conversion_rate
 
 from accounts.models import Account
 from users.models import UserPreferences
@@ -140,8 +140,27 @@ class TransferCreateView(LoginRequiredMixin, CreateView):
         return kwargs
 
     def form_valid(self, form):
-        form.instance.type = Transaction.TransactionType.TRANSFER
-        form.instance.owner = self.request.user
+        origin_account = form.cleaned_data.get('origin_account')
+        destination_account = form.cleaned_data.get('destination_account')
+        transaction = form.save(commit=False)
+        transaction.owner = self.request.user
+        transaction.type = Transaction.TransactionType.TRANSFER
+        
+        origin_currency = origin_account.country.currency_code
+        dest_currency = destination_account.country.currency_code
+
+        if origin_currency != dest_currency:
+            try:
+                rate = get_conversion_rate(origin_currency, dest_currency)
+                converted_value = transaction.value * rate
+                transaction.exchange_rate = rate
+                transaction.converted_value = converted_value
+                messages.info(self.request, f"Exchange rate applied: 1 {origin_currency} = {rate:.4f} {dest_currency}. Destination will receive {converted_value:.2f} {dest_currency}.")
+            except Exception as e:
+                form.add_error(None, f"Could not perform currency conversion: {e}")
+                return self.form_invalid(form)
+        
+        # Chamada super().form_valid() agora está correta. A transação é salva.
         messages.success(self.request, "Transfer created successfully.")
         return super().form_valid(form)
 
