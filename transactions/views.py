@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, ListView, UpdateView, DeleteView
 from core.services import get_conversion_rate
+from decimal import Decimal, InvalidOperation
 
 from accounts.models import Account
 from users.models import UserPreferences
@@ -211,11 +212,45 @@ class TransactionTypeListView(BaseMonthlyListView):
         context = super().get_context_data(**kwargs)
         all_month_tx = self.get_queryset()
         
+        # --- LÓGICA DE CÁLCULO REFEITA ---
+        completed_total = Decimal('0.0')
+        forecasted_total = Decimal('0.0')
+
+        preferred_currency_code = None
+        if context['preferred_currency']:
+            preferred_currency_code = context['preferred_currency'].currency_code
+
+        # Não podemos usar aggregate, precisamos iterar e converter.
+        for tx in all_month_tx:
+            # Pega o valor e a moeda da transação
+            value = tx.value
+            origin_currency = None
+            if tx.origin_account:
+                origin_currency = tx.origin_account.country.currency_code
+            elif tx.destination_account: # Para receitas puras
+                origin_currency = tx.destination_account.country.currency_code
+
+            # Converte o valor se necessário
+            converted_value = value
+            if preferred_currency_code and origin_currency and origin_currency != preferred_currency_code:
+                try:
+                    rate = get_conversion_rate(origin_currency, preferred_currency_code)
+                    converted_value = value * rate
+                except (Exception, InvalidOperation):
+                    # Se a conversão falhar, ignore esta transação no total para evitar dados incorretos.
+                    # Ou, uma alternativa seria ter um 'has_conversion_errors' no contexto.
+                    continue
+            
+            # Adiciona ao total previsto
+            if tx.status in [Transaction.Status.PENDING, Transaction.Status.OVERDUE, Transaction.Status.COMPLETED]:
+                forecasted_total += converted_value
+
+            # Adiciona ao total completado
+            if tx.status == Transaction.Status.COMPLETED:
+                completed_total += converted_value
+
         context['transaction_type'] = self.transaction_type
-        context['summary'] = {
-            'completed': all_month_tx.filter(status=Transaction.Status.COMPLETED).aggregate(total=Sum('value'))['total'] or 0,
-            'forecasted': all_month_tx.filter(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE, Transaction.Status.COMPLETED]).aggregate(total=Sum('value'))['total'] or 0,
-        }
+        context['summary'] = {'completed': completed_total, 'forecasted': forecasted_total}
         return context
 
 class IncomeListView(TransactionTypeListView): transaction_type = Transaction.TransactionType.INCOME
