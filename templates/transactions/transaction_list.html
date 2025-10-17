@@ -121,8 +121,7 @@
                         <th>Type</th>
                         <th>Description</th>
                         <th>Category</th>
-                        <th>From</th>
-                        <th>To</th>
+                        <th>Account</th>
                         <th class="text-end">Value</th>
                         <th>Status</th>
                         <th class="text-center">Actions</th>
@@ -146,18 +145,47 @@
                         </td>
                         <td>
                           {{ tx.description }}
-                          {% if tx.installment_number %}
-                              <!-- <small class="text-muted d-block">{{ tx.description }}</small> -->
-                          {% endif %}
+                          {% if tx.type == 'TRANSFER' and tx.exchange_rate %}
+                                <small class="d-block text-muted" title="{{ tx.exchange_rate }}">
+                                    1 {{ tx.origin_account.country.currency_code }} ≈ {{ tx.exchange_rate|floatformat:4 }} {{ tx.destination_account.country.currency_code }}
+                                </small>
+                            {% endif %}
                         </td>
                         <td>{{ tx.category.name|default:"-" }}</td>
-                        <td>{{ tx.origin_account.bank|default:"-" }}</td>
-                        <td>{{ tx.destination_account.bank|default:"-" }}</td>
+<td>
+                            {% if tx.type == 'EXPENSE' and tx.origin_account %}
+                                <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">{{ tx.origin_account.bank }}</a>
+                            {% elif tx.type == 'INCOME' and tx.destination_account %}
+                                <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">{{ tx.destination_account.bank }}</a>
+                            {% elif tx.type == 'TRANSFER' %}
+                                <div>
+                                    <small class="text-muted d-block">From:</small>
+                                    <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">{{ tx.origin_account.bank }}</a>
+                                </div>
+                                <div class="mt-1">
+                                    <small class="text-muted d-block">To:</small>
+                                    <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">{{ tx.destination_account.bank }}</a>
+                                </div>
+                            {% endif %}
+                        </td>
                         <td class="text-end fw-bold">{% if tx.origin_account %}{% money tx.value tx.origin_account.country %}{% elif tx.destination_account %}{% money tx.value tx.destination_account.country %}{% else %}{{ tx.value|stringformat:".2f" }}{% endif %}</td>
-                        <td>
-                             <span class="badge {% if tx.status == 'PENDING' %}bg-warning-subtle text-warning-emphasis{% elif tx.status == 'COMPLETED' %}bg-success-subtle text-success-emphasis{% else %}bg-danger-subtle text-danger-emphasis{% endif %}">
-                                 {{ tx.get_status_display }}
-                             </span>
+                        <td class="text-end fw-bold">
+                            {% if tx.converted_value %}
+                                <!-- Caso de transferência com conversão -->
+                                <div {% if tx.status == 'OVERDUE' %}class="text-danger"{% endif %}>
+                                    - {% money tx.value tx.origin_account.country %}
+                                </div>
+                                <div class="small text-muted">
+                                    -> + {% money tx.converted_value tx.destination_account.country %}
+                                </div>
+                            {% else %}
+                                <!-- Caso normal (despesa, receita ou transferência sem conversão) -->
+                                <div class="{% if tx.type == 'EXPENSE' or tx.status == 'OVERDUE' %}text-danger{% elif tx.type == 'INCOME' %}text-success{% endif %}">
+                                    {% if tx.type == 'EXPENSE' %}- {% elif tx.type == 'INCOME' %}+ {% endif %}
+                                    {% if tx.origin_account %}{% money tx.value tx.origin_account.country %}
+                                    {% elif tx.destination_account %}{% money tx.value tx.destination_account.country %}{% endif %}
+                                </div>
+                            {% endif %}
                         </td>
                         <td class="text-center">
                             {% if tx.status == 'PENDING' or tx.status == 'OVERDUE' %}

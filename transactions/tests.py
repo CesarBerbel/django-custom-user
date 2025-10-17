@@ -331,6 +331,35 @@ class TransactionModelLogicTests(TestCase):
 
         self.assertEqual(self.account.balance, Decimal('1000.00'))
 
+    def test_delete_completed_transaction_reverts_balance(self):
+        """Testa se a exclusão de uma transação completada reverte o saldo."""
+        initial_balance = self.account.balance # Ex: 1000
+        
+        # Cria e efetiva uma despesa
+        tx = Transaction.objects.create(
+            owner=self.user,
+            description="Expense to be deleted",
+            value=150,
+            origin_account=self.account,
+            type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.COMPLETED
+        )
+
+        self.account.refresh_from_db()
+        # Confirma que o saldo foi deduzido
+        self.assertEqual(self.account.balance, initial_balance - tx.value) # Ex: 850
+
+        # Deleta a transação
+        tx_pk = tx.pk
+        tx.delete()
+
+        # Confirma que a transação foi deletada
+        self.assertFalse(Transaction.objects.filter(pk=tx_pk).exists())
+        
+        # O teste principal: confirma que o saldo voltou ao original
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.balance, initial_balance)
+
 class ManagementCommandsTests(TestCase):
     def setUp(self):
         User = get_user_model()
