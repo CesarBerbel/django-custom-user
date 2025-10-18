@@ -17,6 +17,13 @@ class TransactionBaseForm(forms.ModelForm):
         label="Total number of installments", 
         widget=forms.NumberInput(attrs={'placeholder': 'e.g., 12'})
     )
+    installments_paid = forms.IntegerField(
+        required=False,
+        min_value=1,
+        initial=1,
+        label="Starting installment number",
+        widget=forms.NumberInput(attrs={'placeholder': 'e.g., 1'})
+    )
     frequency = forms.ChoiceField(
         required=False,
         choices=RecurringTransaction.Frequency.choices, 
@@ -79,12 +86,15 @@ class IncomeForm(TransactionBaseForm):
             Field('is_installment', css_class="form-check-input"),
             Div(
                 Row(
-                    Column(FloatingField('installments_total'), css_class='col-md-6'),
-                    Column(FloatingField('frequency'), css_class='col-md-6'),
+                    Column(FloatingField('installments_paid'), css_class='col-sm-6'), # <-- ADICIONADO AO LAYOUT
+                    Column(FloatingField('installments_total'), css_class='col-sm-6'),
+                    css_class='g-2'
+                ),
+                Row(
+                    Column(FloatingField('frequency'), css_class='col-sm-12'),
                     css_class='g-2 mt-2'
                 ),
-                # Este id é crucial para o JavaScript
-                id="installment-fields", 
+                id="installment-fields",
                 css_class="d-none mt-3 p-3 border rounded bg-light"
             ),
             # --- BOTÕES RESTAURADOS ABAIXO ---
@@ -126,12 +136,15 @@ class ExpenseForm(TransactionBaseForm):
             Field('is_installment', css_class="form-check-input"),
             Div(
                 Row(
-                    Column(FloatingField('installments_total'), css_class='col-md-6'),
-                    Column(FloatingField('frequency'), css_class='col-md-6'),
+                    Column(FloatingField('installments_paid'), css_class='col-sm-6'), # <-- ADICIONADO AO LAYOUT
+                    Column(FloatingField('installments_total'), css_class='col-sm-6'),
+                    css_class='g-2'
+                ),
+                Row(
+                    Column(FloatingField('frequency'), css_class='col-sm-12'),
                     css_class='g-2 mt-2'
                 ),
-                # Este id é crucial para o JavaScript
-                id="installment-fields", 
+                id="installment-fields",
                 css_class="d-none mt-3 p-3 border rounded bg-light"
             ),
             # --- BOTÕES RESTAURADOS ABAIXO ---
