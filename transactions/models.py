@@ -1,8 +1,8 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
-from decimal import Decimal
-
+from .querysets import TransactionQuerySet
+from django.db.models import F
 # Importa o modelo de Conta da outra app
 from accounts.models import Account
 
@@ -53,6 +53,8 @@ class Transaction(models.Model):
         COMPLETED = 'COMPLETED', 'Completed'
         OVERDUE = 'OVERDUE', 'Overdue'
 
+    objects = TransactionQuerySet.as_manager()
+
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -97,6 +99,15 @@ class Transaction(models.Model):
         related_name="instances"
     )
 
+    exchange_rate = models.DecimalField(
+        max_digits=18, decimal_places=8, null=True, blank=True,
+        help_text="Exchange rate applied at the time of the transfer"
+    )
+    converted_value = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="The value in the destination account's currency"
+    )
+
     # NOVO CAMPO para registrar o número da parcela
     installment_number = models.PositiveIntegerField(null=True, blank=True)        
     description = models.CharField(max_length=255, default="Sem descrição")
@@ -117,23 +128,27 @@ class Transaction(models.Model):
     def __str__(self):
         return f"{self.get_type_display()} of {self.value} on {self.date}"
 
-    # Rule 4.2: Lógica de atualização de saldo
+    def complete(self) -> bool:
+        if self.status in [self.Status.PENDING, self.Status.OVERDUE]:
+            self.status = self.Status.COMPLETED
+            self.save()
+            return True
+        return False
+
     def save(self, *args, **kwargs):
         is_new = self._state.adding
         old_status = None
-        
+        old_instance = None
         if not is_new:
             old_instance = Transaction.objects.get(pk=self.pk)
             old_status = old_instance.status
 
-        # Determina o status
         status_is_now_completed = self.status == self.Status.COMPLETED
         status_was_completed = old_status == self.Status.COMPLETED
         
         status_changed_to_completed = status_is_now_completed and not status_was_completed
         status_reverted_from_completed = not status_is_now_completed and status_was_completed
 
-        # A lógica para a data de efetivação agora inclui o caso de criação
         if status_is_now_completed and self.completion_date is None:
             self.completion_date = timezone.now().date()
         elif status_reverted_from_completed:
@@ -141,43 +156,41 @@ class Transaction(models.Model):
         
         super().save(*args, **kwargs)
 
-        # Lógica de saldo pós-save
         if status_changed_to_completed:
-            self._process_completion()
-        elif status_reverted_from_completed and not is_new:
-            self._reverse_completion(old_instance)
+            self._process_balance_changes()
+        elif status_reverted_from_completed and old_instance:
+            self._reverse_balance_changes(old_instance)
 
-    def _process_completion(self):
-        """Applies the transaction's effect on account balances."""
+    def delete(self, *args, **kwargs):
+        if self.status == self.Status.COMPLETED:
+            self._reverse_balance_changes(self)
+        return super().delete(*args, **kwargs)
+
+    def _process_balance_changes(self):
         if self.type == self.TransactionType.EXPENSE and self.origin_account:
-            self.origin_account.balance -= self.value
-            self.origin_account.save(update_fields=['balance'])
-            
+            Account.objects.filter(pk=self.origin_account.pk).update(balance=F('balance') - self.value)
         elif self.type == self.TransactionType.INCOME and self.destination_account:
-            self.destination_account.balance += self.value
-            self.destination_account.save(update_fields=['balance'])
-            
+            Account.objects.filter(pk=self.destination_account.pk).update(balance=F('balance') + self.value)
         elif self.type == self.TransactionType.TRANSFER and self.origin_account and self.destination_account:
-            self.origin_account.balance -= self.value
-            self.destination_account.balance += self.value
-            self.origin_account.save(update_fields=['balance'])
-            self.destination_account.save(update_fields=['balance'])
+            value_to_add = self.converted_value if self.converted_value is not None else self.value
+            Account.objects.filter(pk=self.origin_account.pk).update(balance=F('balance') - self.value)
+            Account.objects.filter(pk=self.destination_account.pk).update(balance=F('balance') + value_to_add)
 
-    def _reverse_completion(self, old_transaction):
-        """Reverts the transaction's effect on account balances."""
-        if old_transaction.type == self.TransactionType.EXPENSE and old_transaction.origin_account:
-            old_transaction.origin_account.balance += old_transaction.value
-            old_transaction.origin_account.save(update_fields=['balance'])
-            
-        elif old_transaction.type == self.TransactionType.INCOME and old_transaction.destination_account:
-            old_transaction.destination_account.balance -= old_transaction.value
-            old_transaction.destination_account.save(update_fields=['balance'])
-            
-        elif old_transaction.type == self.TransactionType.TRANSFER and old_transaction.origin_account and old_transaction.destination_account:
-            old_transaction.origin_account.balance += old_transaction.value
-            old_transaction.destination_account.balance -= old_transaction.value
-            old_transaction.origin_account.save(update_fields=['balance'])
-            old_transaction.destination_account.save(update_fields=['balance'])
+    def _reverse_balance_changes(self, transaction_to_revert):
+        ttype = transaction_to_revert.type
+        origin_account = transaction_to_revert.origin_account
+        dest_account = transaction_to_revert.destination_account
+        value = transaction_to_revert.value
+        converted_value = transaction_to_revert.converted_value
+        
+        if ttype == self.TransactionType.EXPENSE and origin_account:
+            Account.objects.filter(pk=origin_account.pk).update(balance=F('balance') + value)
+        elif ttype == self.TransactionType.INCOME and dest_account:
+            Account.objects.filter(pk=dest_account.pk).update(balance=F('balance') - value)
+        elif ttype == self.TransactionType.TRANSFER and origin_account and dest_account:
+            value_to_subtract = converted_value if converted_value is not None else value
+            Account.objects.filter(pk=origin_account.pk).update(balance=F('balance') + value)
+            Account.objects.filter(pk=dest_account.pk).update(balance=F('balance') - value_to_subtract)
 
 class RecurringTransaction(models.Model):
     class Frequency(models.TextChoices):
