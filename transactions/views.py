@@ -82,7 +82,9 @@ class TransactionCreateMixin(LoginRequiredMixin):
                     transaction_type=self.get_transaction_type(),
                     origin_account=form.cleaned_data.get('origin_account'),
                     destination_account=form.cleaned_data.get('destination_account'),
-                    category=form.cleaned_data.get('category')
+                    category=form.cleaned_data.get('category'),
+                    start_installment=form.cleaned_data.get('installments_paid', 1), # Usa o campo do formulário
+                    initial_status=form.cleaned_data['status'],
                 )
                 
                 # O método 'create_installments' já cuidou de salvar.

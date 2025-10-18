@@ -12,69 +12,73 @@ from django.http import HttpRequest
 from accounts.services import get_conversion_rate, get_exchange_rates
 
 def create_installments(
-    *, # Força o uso de keyword arguments, tornando a chamada mais legível
-    user: get_user_model(),
+    *, 
+    user,
     total_installments: int,
+    start_installment: int,
     start_date: 'datetime.date',
     frequency: str,
     value: 'Decimal',
     description: str,
     transaction_type: str,
+    initial_status: str,
     origin_account: Account | None = None,
     destination_account: Account | None = None,
     category: Category | None = None
 ) -> RecurringTransaction:
     """
     Serviço para criar uma 'receita' de recorrência e gerar todas as suas
-    transações de parcela de uma só vez.
-
-    Retorna a instância de RecurringTransaction criada.
+    transações de parcela, com a primeira parcela potencialmente já completa.
     """
-    # 1. Cria o objeto "pai" que representa a recorrência
     recurring_transaction = RecurringTransaction.objects.create(
-        owner=user,
-        start_date=start_date,
-        frequency=frequency,
-        installments_total=total_installments,
-        value=value,
-        description=description,
-        transaction_type=transaction_type,
-        origin_account=origin_account,
-        destination_account=destination_account,
-        category=category
+        owner=user, start_date=start_date, frequency=frequency,
+        installments_total=total_installments, installments_paid=start_installment,
+        value=value, description=description, transaction_type=transaction_type,
+        origin_account=origin_account, destination_account=destination_account, category=category
     )
     
-    # 2. Prepara a lista de instâncias de transação para bulk_create
     transactions_to_create = []
     current_date = start_date
 
-    for i in range(1, total_installments + 1):
+    for i in range(start_installment, total_installments + 1):
         installment_desc = f"{description} [{i}/{total_installments}]"
         
+        current_status = Transaction.Status.PENDING
+        if i == start_installment:
+            current_status = initial_status
+            
         transactions_to_create.append(Transaction(
-            owner=user,
-            recurring_transaction=recurring_transaction,
-            installment_number=i,
-            description=installment_desc,
-            value=value,
+            owner=user, recurring_transaction=recurring_transaction,
+            installment_number=i, description=installment_desc, value=value,
             date=current_date, 
-            status=Transaction.Status.PENDING,
+            status=current_status,
             type=transaction_type,
-            origin_account=origin_account,
-            destination_account=destination_account,
+            origin_account=origin_account, destination_account=destination_account,
             category=category
         ))
+        
+        # --- LÓGICA DE ATUALIZAÇÃO DE DATA CORRIGIDA ---
+        if frequency == RecurringTransaction.Frequency.DAILY:
+            current_date += relativedelta(days=1)
+        elif frequency == RecurringTransaction.Frequency.WEEKLY:
+            current_date += relativedelta(weeks=1)
+        elif frequency == RecurringTransaction.Frequency.BIWEEKLY:
+            current_date += relativedelta(weeks=2)
+        elif frequency == RecurringTransaction.Frequency.MONTHLY:
+            current_date += relativedelta(months=1)
+        elif frequency == RecurringTransaction.Frequency.SEMESTRAL:
+            current_date += relativedelta(months=6)
+        elif frequency == RecurringTransaction.Frequency.ANNUALLY:
+            current_date += relativedelta(years=1)
+        # --- FIM DA CORREÇÃO ---
 
-        # Calcula a data da próxima parcela
-        if frequency == RecurringTransaction.Frequency.DAILY: current_date += relativedelta(days=1)
-        elif frequency == RecurringTransaction.Frequency.WEEKLY: current_date += relativedelta(weeks=1)
-        elif frequency == RecurringTransaction.Frequency.BIWEEKLY: current_date += relativedelta(weeks=2)
-        elif frequency == RecurringTransaction.Frequency.MONTHLY: current_date += relativedelta(months=1)
-        elif frequency == RecurringTransaction.Frequency.SEMESTRAL: current_date += relativedelta(months=6)
-        elif frequency == RecurringTransaction.Frequency.ANNUALLY: current_date += relativedelta(years=1)
-    
-    # 3. Usa bulk_create para uma inserção eficiente
-    Transaction.objects.bulk_create(transactions_to_create)
+    # Separa a primeira transação para salvar individualmente (garantir que 'save()' seja chamado)
+    first_transaction = transactions_to_create.pop(0)
+    first_transaction.save()
+
+    # Cria o resto das transações (pendentes) em massa
+    if transactions_to_create:
+        Transaction.objects.bulk_create(transactions_to_create)
 
     return recurring_transaction
 
