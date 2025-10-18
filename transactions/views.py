@@ -4,11 +4,12 @@
 #
 import datetime
 from dateutil.relativedelta import relativedelta
-
+from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, DecimalField, Case, When, Value
+from django.db.models.functions import Coalesce 
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -22,6 +23,7 @@ from .forms import (
     IncomeForm, ExpenseForm, TransferForm, 
     CategoryForm, RecurringTransactionForm
 )
+from .services import create_installments, create_transfer
 
 # ==============================================================================
 # VIEW DE AÇÃO SIMPLES
@@ -30,16 +32,23 @@ from .forms import (
 @login_required
 @require_POST
 def complete_transaction_view(request, pk):
-    """Marca uma transação pendente/vencida como 'Completed'."""
+    """
+    View "magra" que encontra uma transação e delega a ação de
+    efetivação para o próprio objeto de transação.
+    """
+    # 1. Busca a transação de forma segura
     transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
     
-    if transaction.status in [Transaction.Status.PENDING, Transaction.Status.OVERDUE]:
-        transaction.status = Transaction.Status.COMPLETED
-        transaction.save()
+    # 2. Delega a lógica de negócio para o método do modelo
+    success = transaction.complete()
+    
+    # 3. Fornece feedback ao usuário com base no resultado
+    if success:
         messages.success(request, f"Transaction '{transaction.description}' marked as completed.")
     else:
-        messages.warning(request, "This transaction has already been completed.")
-        
+        messages.warning(request, "This transaction may have already been completed.")
+            
+    # Redireciona de volta
     return redirect(request.META.get('HTTP_REFERER', reverse_lazy('transactions:expense_list')))
 
 
@@ -59,60 +68,43 @@ class TransactionCreateMixin(LoginRequiredMixin):
         
     def form_valid(self, form):
         is_installment = form.cleaned_data.get('is_installment')
-        user = self.request.user
-        transaction_type=self.get_transaction_type()
-
+        
         if is_installment:
             try:
-                total_installments = form.cleaned_data['installments_total']
-                start_date = form.cleaned_data['date']
-                frequency = form.cleaned_data['frequency']
-                value = form.cleaned_data['value']
-                description = form.cleaned_data['description']
-                
-                rec_tx = RecurringTransaction.objects.create(
-                    owner=user, start_date=start_date, frequency=frequency,
-                    installments_total=total_installments, value=value, description=description,
-                    transaction_type=transaction_type,
+                # 1. Delega toda a lógica de criação de parcelas para o serviço
+                created_installments = create_installments(
+                    user=self.request.user,
+                    total_installments=form.cleaned_data['installments_total'],
+                    start_date=form.cleaned_data['date'],
+                    frequency=form.cleaned_data['frequency'],
+                    value=form.cleaned_data['value'],
+                    description=form.cleaned_data['description'],
+                    transaction_type=self.get_transaction_type(),
                     origin_account=form.cleaned_data.get('origin_account'),
                     destination_account=form.cleaned_data.get('destination_account'),
                     category=form.cleaned_data.get('category')
                 )
                 
-                self.object = rec_tx
-                transactions_to_create = []
-                current_date = start_date
-
-                for i in range(1, total_installments + 1):
-                    installment_desc = f"{description} [{i}/{total_installments}]"
-                    transactions_to_create.append(Transaction(
-                        owner=user, recurring_transaction=rec_tx, installment_number=i,
-                        description=installment_desc, value=value, date=current_date, 
-                        status=Transaction.Status.PENDING, type=transaction_type,
-                        origin_account=rec_tx.origin_account,
-                        destination_account=rec_tx.destination_account,
-                        category=rec_tx.category
-                    ))
-                    
-                    if frequency == RecurringTransaction.Frequency.DAILY: current_date += relativedelta(days=1)
-                    elif frequency == RecurringTransaction.Frequency.WEEKLY: current_date += relativedelta(weeks=1)
-                    elif frequency == RecurringTransaction.Frequency.BIWEEKLY: current_date += relativedelta(weeks=2)
-                    elif frequency == RecurringTransaction.Frequency.MONTHLY: current_date += relativedelta(months=1)
-                    elif frequency == RecurringTransaction.Frequency.SEMESTRAL: current_date += relativedelta(months=6)
-                    elif frequency == RecurringTransaction.Frequency.ANNUALLY: current_date += relativedelta(years=1)
-
-                Transaction.objects.bulk_create(transactions_to_create)
-                messages.success(self.request, f"{len(transactions_to_create)} installments created.")
+                # O método 'create_installments' já cuidou de salvar.
+                # Agora só precisamos mostrar a mensagem e redirecionar.
+                self.object = created_installments
+                messages.success(
+                    self.request,
+                    f"{created_installments.installments_total} installments for "
+                    f"'{created_installments.description}' were created."
+                )
                 return redirect(self.get_success_url())
-
+                
             except Exception as e:
-                messages.error(self.request, f"An error occurred while creating installments: {e}")
+                # Captura qualquer erro do serviço
+                messages.error(self.request, f"An error occurred: {e}")
                 return self.form_invalid(form)
                 
         else:
-            form.instance.type = transaction_type
-            form.instance.owner = user
-            messages.success(self.request, f'Transaction created successfully.')
+            # A lógica para transação única já estava limpa
+            form.instance.owner = self.request.user
+            form.instance.type = self.get_transaction_type()
+            messages.success(self.request, 'Single transaction created successfully.')
             return super().form_valid(form)
 
     def get_transaction_type(self):
@@ -139,11 +131,26 @@ class TransferCreateView(LoginRequiredMixin, CreateView):
         kwargs['user'] = self.request.user
         return kwargs
 
+    # --- MÉTODO form_valid REFATORADO ---
     def form_valid(self, form):
-        form.instance.type = Transaction.TransactionType.TRANSFER
-        form.instance.owner = self.request.user
-        messages.success(self.request, "Transfer created successfully.")
-        return super().form_valid(form)
+        """
+_ _       Delega a lógica de criação da transferência para a camada de serviço.
+        """
+        try:
+            # Chama o serviço, passando os dados do formulário
+            transaction = create_transfer(
+                user=self.request.user,
+                request=self.request, # Passa o request para as mensagens
+                form_data=form.cleaned_data
+            )
+            self.object = transaction
+            messages.success(self.request, "Transfer created successfully.")
+            return redirect(self.get_success_url())
+
+        except Exception as e:
+            # Captura a exceção lançada pelo serviço em caso de erro
+            form.add_error(None, str(e)) # Adiciona o erro ao topo do formulário
+            return self.form_invalid(form)
 
 
 # ==============================================================================
@@ -151,20 +158,31 @@ class TransferCreateView(LoginRequiredMixin, CreateView):
 # ==============================================================================
 
 class BaseMonthlyListView(LoginRequiredMixin, ListView):
-    """Classe base APENAS para a navegação de data e contexto comum."""
+    """
+    Classe base que define o comportamento comum para todas as listagens mensais:
+    - Navegação de data (mês anterior/próximo)
+    - Contexto comum (moeda preferida, etc.)
+    """
     model = Transaction
     template_name = 'transactions/transaction_list.html'
     context_object_name = 'transactions'
     paginate_by = 30
     report_date = None
 
+    def setup_dates(self):
+        """Helper para definir as datas, chamado uma vez por request."""
+        if self.report_date is None: # Garante que só seja executado uma vez
+            year = self.kwargs.get('year', timezone.now().year)
+            month = self.kwargs.get('month', timezone.now().month)
+            self.report_date = datetime.date(year, month, 1)
+
     def dispatch(self, request, *args, **kwargs):
-        year = self.kwargs.get('year', timezone.now().year)
-        month = self.kwargs.get('month', timezone.now().month)
-        self.report_date = datetime.date(year, month, 1)
+        """Garante que a data do relatório seja definida antes de qualquer outro método."""
+        self.setup_dates()
         return super().dispatch(request, *args, **kwargs)
     
     def get_context_data(self, **kwargs):
+        """Prepara o contexto comum (navegação de data e moeda)."""
         context = super().get_context_data(**kwargs)
         user_prefs, _ = UserPreferences.objects.get_or_create(user=self.request.user)
         context['preferred_currency'] = user_prefs.preferred_currency
@@ -174,92 +192,171 @@ class BaseMonthlyListView(LoginRequiredMixin, ListView):
         context['base_url_name'] = self.request.resolver_match.url_name.replace('_specific', '')
         return context
 
-# --- Hierarquia para Listas por Tipo ---
+
 class TransactionTypeListView(BaseMonthlyListView):
-    transaction_type = None
+    """
+    Herda da base e adiciona a lógica para:
+    - Filtrar por tipo de transação
+    - Calcular os resumos de 'completed' e 'forecasted'
+    """
+    transaction_type = None # Deve ser sobrescrito pelas classes filhas
 
     def get_queryset(self):
+        """
+        Usa a lógica de "regime de caixa" para filtrar as transações por tipo,
+        mostrando as efetivadas no mês em que foram completadas, e as pendentes
+        no mês em que estão agendadas.
+        """
         start_of_month = self.report_date
         end_of_month = (self.report_date + relativedelta(months=1)) - relativedelta(days=1)
         
+        # Filtro para transações EFETIVADAS no mês (baseado em completion_date)
+        completed_q = Q(status=Transaction.Status.COMPLETED, completion_date__range=[start_of_month, end_of_month])
+        
+        # Filtro para transações PENDENTES/VENCIDAS no mês (baseado em date)
+        pending_q = Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__range=[start_of_month, end_of_month])
+        
+        # A query agora é consistente com a TransactionByAccountListView
         return Transaction.objects.filter(
             owner=self.request.user,
             type=self.transaction_type,
-            date__range=[start_of_month, end_of_month] # Usa 'date' para competência
-        ).select_related('category', 'origin_account', 'destination_account')
+            # A condição OR que combina os dois filtros
+        ).filter(
+            completed_q | pending_q
+        ).select_related(
+            'category', 'origin_account', 'destination_account'
+        ).order_by('-completion_date', '-date')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        all_month_tx = self.get_queryset()
+        # Para os totais, precisamos do queryset completo, não apenas da página
+        full_queryset = self.get_queryset()
+
+        preferred_code = context['preferred_currency'].currency_code if context['preferred_currency'] else None
+        
+        # Delega o trabalho de cálculo para o método do QuerySet
+        summary_data = full_queryset.get_type_summary(
+            user=self.request.user, 
+            preferred_currency_code=preferred_code
+        )
         
         context['transaction_type'] = self.transaction_type
-        context['summary'] = {
-            'completed': all_month_tx.filter(status=Transaction.Status.COMPLETED).aggregate(total=Sum('value'))['total'] or 0,
-            'forecasted': all_month_tx.filter(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE, Transaction.Status.COMPLETED]).aggregate(total=Sum('value'))['total'] or 0,
-        }
+        context['summary'] = summary_data
         return context
 
-class IncomeListView(TransactionTypeListView): transaction_type = Transaction.TransactionType.INCOME
-class ExpenseListView(TransactionTypeListView): transaction_type = Transaction.TransactionType.EXPENSE
-class TransferListView(TransactionTypeListView): transaction_type = Transaction.TransactionType.TRANSFER
 
-# --- Hierarquia Separada para Lista por Conta ---
+# As classes filhas agora são extremamente simples
+class IncomeListView(TransactionTypeListView):
+    transaction_type = Transaction.TransactionType.INCOME
+
+class ExpenseListView(TransactionTypeListView):
+    transaction_type = Transaction.TransactionType.EXPENSE
+
+class TransferListView(TransactionTypeListView):
+    transaction_type = Transaction.TransactionType.TRANSFER
+
+
 class TransactionByAccountListView(BaseMonthlyListView):
+    """
+    Herda da base e adiciona a lógica específica para o extrato de conta.
+    Esta hierarquia é separada da 'TransactionTypeListView' para evitar conflitos.
+    """
     def get_queryset(self):
-        self.account = get_object_or_404(Account, pk=self.kwargs['account_id'], owner=self.request.user)
+        account = get_object_or_404(Account, pk=self.kwargs['account_id'], owner=self.request.user)
         start_of_month = self.report_date
         end_of_month = (self.report_date + relativedelta(months=1)) - relativedelta(days=1)
         
+        # A query aqui usa a lógica de 'data de caixa'
         completed_q = Q(status=Transaction.Status.COMPLETED, completion_date__range=[start_of_month, end_of_month])
         pending_q = Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__range=[start_of_month, end_of_month])
         
         return Transaction.objects.filter(
             Q(owner=self.request.user),
-            Q(origin_account=self.account) | Q(destination_account=self.account),
+            Q(origin_account=account) | Q(destination_account=account),
             completed_q | pending_q
         ).select_related('category').order_by('-completion_date', '-date')
     
     def get_context_data(self, **kwargs):
+        # ... (A implementação completa e complexa do get_context_data do extrato,
+        # que já estava funcionando, continua aqui)
+        # ...
         context = super().get_context_data(**kwargs)
-        all_transactions_for_month = self.get_queryset()
+        #... e o resto da sua lógica
+        return context
+
+    def get_context_data(self, **kwargs):
+        """
+        Calcula os saldos (inicial, atual, previsto) e as movimentações
+        do mês para a exibição no extrato da conta.
+        """
+        context = super().get_context_data(**kwargs)
         user = self.request.user
+        
+        # O objeto 'self.account' é definido no get_queryset,
+        # mas vamos buscá-lo novamente aqui para ter certeza e clareza.
         account = get_object_or_404(Account, pk=self.kwargs['account_id'], owner=user)
         
-        is_future_month = self.report_date.year > timezone.now().year or \
-                          (self.report_date.year == timezone.now().year and self.report_date.month > timezone.now().month)
+        # Queryset completo do mês para os cálculos
+        all_transactions_for_month = self.get_queryset()
+
+        # --- CÁLCULO DO SALDO INICIAL ---
+        # (Esta parte já estava correta, usando get_balance_until)
+        is_future_month = self.report_date > timezone.now().date().replace(day=1)
         end_of_previous_month = self.report_date - relativedelta(days=1)
         
-        if is_future_month:
-            context['starting_balance_type'] = 'Forecasted'
-            completed_past_q = Q(status=Transaction.Status.COMPLETED, completion_date__lte=end_of_previous_month)
-            pending_past_q = Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__lte=end_of_previous_month)
-            
-            past_incomes = Transaction.objects.filter(Q(owner=user), Q(destination_account=account), completed_past_q | pending_past_q).aggregate(total=Sum('value'))['total'] or 0
-            past_expenses = Transaction.objects.filter(Q(owner=user), Q(origin_account=account), completed_past_q | pending_past_q).aggregate(total=Sum('value'))['total'] or 0
-            
-            starting_balance = account.initial_balance + past_incomes - past_expenses
-        else:
-            context['starting_balance_type'] = 'Actual'
-            past_incomes = Transaction.objects.filter(owner=user, destination_account=account, status=Transaction.Status.COMPLETED, completion_date__lte=end_of_previous_month).aggregate(total=Sum('value'))['total'] or 0
-            past_expenses = Transaction.objects.filter(owner=user, origin_account=account, status=Transaction.Status.COMPLETED, completion_date__lte=end_of_previous_month).aggregate(total=Sum('value'))['total'] or 0
-            starting_balance = account.initial_balance + past_incomes - past_expenses
-            
-        income_this_month_completed = all_transactions_for_month.filter(status=Transaction.Status.COMPLETED, destination_account=account).aggregate(total=Sum('value'))['total'] or 0
-        expense_this_month_completed = all_transactions_for_month.filter(status=Transaction.Status.COMPLETED, origin_account=account).aggregate(total=Sum('value'))['total'] or 0
-        income_this_month_forecasted = all_transactions_for_month.filter(status__in=[Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE], destination_account=account).aggregate(total=Sum('value'))['total'] or 0
-        expense_this_month_forecasted = all_transactions_for_month.filter(status__in=[Transaction.Status.COMPLETED, Transaction.Status.PENDING, Transaction.Status.OVERDUE], origin_account=account).aggregate(total=Sum('value'))['total'] or 0
+        starting_balance = Transaction.objects.filter(owner=user).get_balance_until(
+            account=account,
+            end_date=end_of_previous_month,
+            is_forecasted=is_future_month
+        )
         
+        # --- CÁLCULO DAS MOVIMENTAÇÕES DO MÊS (COMPLETED) ---
+        
+        completed_txs_this_month = all_transactions_for_month.filter(status=Transaction.Status.COMPLETED)
+        
+        # Expressão para somar o valor correto para as ENTRADAS
+        income_value_expression = Case(
+            When(type=Transaction.TransactionType.TRANSFER, converted_value__isnull=False, then='converted_value'),
+            default='value',
+            output_field=DecimalField()
+        )
+        
+        # Agrega as ENTRADAS (INCOMES) do mês para esta conta
+        income_this_month_completed = completed_txs_this_month.filter(
+            destination_account=account
+        ).aggregate(
+            total=Coalesce(Sum(income_value_expression), Decimal('0.0'))
+        )['total']
+        
+        # Agrega as SAÍDAS (EXPENSES e TRANSFERS) do mês para esta conta
+        expense_this_month_completed = completed_txs_this_month.filter(
+            origin_account=account
+        ).aggregate(
+            total=Coalesce(Sum('value'), Decimal('0.0'))
+        )['total']
+        
+        
+        # --- CÁLCULO DO SALDO PREVISTO ---
+        # A forma mais segura é recalcular o saldo final previsto
+        forecasted_balance = Transaction.objects.filter(owner=user).get_balance_until(
+            account=account,
+            end_date=(self.report_date + relativedelta(months=1)) - relativedelta(days=1),
+            is_forecasted=True
+        )
+
+        # Montagem do contexto final
         context['account'] = account
         context['account_id'] = self.kwargs['account_id']
+        context['starting_balance_type'] = 'Forecasted' if is_future_month else 'Actual'
         context['summary'] = {
             'starting_balance': starting_balance,
             'income_this_month_completed': income_this_month_completed,
             'expense_this_month_completed': expense_this_month_completed,
+            # Saldo atual é derivado das movimentações calculadas + saldo inicial
             'current_balance': starting_balance + income_this_month_completed - expense_this_month_completed,
-            'forecasted_balance': starting_balance + income_this_month_forecasted - expense_this_month_forecasted
+            'forecasted_balance': forecasted_balance
         }
         return context
-
 # ==============================================================================
 # VIEWS DE CATEGORIA (CRUD)
 # ==============================================================================

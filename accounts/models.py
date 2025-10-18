@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.core.validators import RegexValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
+from .querysets import AccountQuerySet
 
 
 class AccountType(models.Model):
@@ -90,6 +91,8 @@ class Account(models.Model):
     bank = models.ForeignKey(Bank, on_delete=models.PROTECT, related_name="accounts")
     type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name="accounts")
     country = models.ForeignKey(Country, on_delete=models.PROTECT, related_name="accounts")
+
+    objects = AccountQuerySet.as_manager()
 
     initial_balance = models.DecimalField(
         max_digits=14, decimal_places=2,

@@ -6,7 +6,7 @@ from accounts.models import Account, AccountType, Country, Bank
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-
+from transactions.models import Transaction
 
 class AccountFormsTests(TestCase):
     def setUp(self):        
@@ -301,3 +301,46 @@ class CountryManagementTests(TestCase):
         url = reverse("accounts:country_delete", args=[self.country.pk])
         response = self.client.post(url, follow=True)
         self.assertFalse(Country.objects.filter(pk=self.country.pk).exists())
+
+class AccountQuerySetTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="u@example.com", password="pass12345")
+        self.client.force_login(self.user)
+
+        self.type = AccountType.objects.create(name="Checking")
+        self.country = Country.objects.create(code="PT", currency_code="EUR", currency_name="Euro")
+        self.bank = Bank.objects.create(name="Bank Y")
+
+        self.account = Account.objects.create(
+            bank=self.bank, type=self.type, country=self.country,
+            initial_balance=Decimal("50.00"), balance=None, owner=self.user
+        )
+    
+        self.account.initial_balance = 500
+        self.account.save()
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, value=100,
+            type=Transaction.TransactionType.EXPENSE, status=Transaction.Status.COMPLETED,
+            date=timezone.now().date(), completion_date=timezone.now().date()
+        )
+
+    def test_with_calculated_balances(self):
+        """Testa se o saldo é calculado e anexado corretamente."""
+        end_date = timezone.now().date()
+        
+        # Chama o método do queryset
+        accounts_with_balances = Account.objects.filter(owner=self.user).with_calculated_balances(
+            user=self.user, end_date=end_date, is_forecasted=False
+        )
+        
+        self.assertEqual(len(accounts_with_balances), 1)
+        
+        # Pega o objeto da conta da lista retornada
+        tested_account = accounts_with_balances[0]
+        
+        # Verifica se o novo atributo existe
+        self.assertTrue(hasattr(tested_account, 'calculated_balance'))
+        
+        # Saldo inicial (500) - Despesa (100) = 400
+        self.assertEqual(tested_account.calculated_balance, Decimal('400.00'))        

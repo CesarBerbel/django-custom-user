@@ -12,6 +12,8 @@ from .forms import TransferForm
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
 from django.core.management import call_command
+from unittest.mock import patch, MagicMock
+from .services import create_transfer
 
 class TransactionModelTests(TestCase):
     def setUp(self):
@@ -569,3 +571,118 @@ class InstallmentCreationTests(TestCase):
         tx = Transaction.objects.first()
         self.assertIsNone(tx.recurring_transaction)
         self.assertIsNone(tx.installment_number)        
+
+class TransactionModelMethodTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="service_test@email.com", password="pw")
+        country_us = Country.objects.create(code="US", currency_code="USD")
+        bank = Bank.objects.create(name="Service Bank")
+        acc_type = AccountType.objects.create(name="Standard")
+        self.account = Account.objects.create(owner=self.user, bank=bank, country=country_us, type=acc_type, initial_balance=1000)
+
+    def test_complete_method_changes_status_and_balance(self):
+        """Testa se o método transaction.complete() funciona."""
+        initial_balance = self.account.balance
+        tx = Transaction.objects.create(
+            owner=self.user, origin_account=self.account,
+            value=100, type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.PENDING
+        )
+
+        success = tx.complete()
+        tx.refresh_from_db()
+        self.account.refresh_from_db()
+
+        self.assertTrue(success)
+        self.assertEqual(tx.status, Transaction.Status.COMPLETED)
+        self.assertIsNotNone(tx.completion_date)
+        self.assertEqual(self.account.balance, initial_balance - 100)
+
+    def test_delete_completed_transaction_reverts_balance(self):
+        """Testa se deletar uma transação completada reverte o saldo da conta."""
+        initial_balance = self.account.balance
+        tx = Transaction.objects.create(
+            owner=self.user, origin_account=self.account,
+            value=50, type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.COMPLETED
+        )
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.balance, initial_balance - 50)
+
+        tx.delete()
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.balance, initial_balance)
+
+
+class TransactionServicesTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="service_test@email.com", password="pw")
+        country_us = Country.objects.create(code="US", currency_code="USD")
+        country_pt = Country.objects.create(code="PT", currency_code="EUR")
+        bank = Bank.objects.create(name="Service Bank")
+        acc_type = AccountType.objects.create(name="Standard")
+        self.account_usd = Account.objects.create(owner=self.user, bank=bank, country=country_us, type=acc_type, initial_balance=1000)
+        self.account_eur = Account.objects.create(owner=self.user, bank=bank, country=country_pt, type=acc_type, initial_balance=1000)
+
+    @patch('transactions.services.get_conversion_rate')
+    def test_create_multi_currency_transfer(self, mock_get_rate):
+        """Testa o serviço create_transfer com moedas diferentes."""
+        mock_get_rate.return_value = Decimal('0.92') # 1 USD = 0.92 EUR
+
+        form_data = {
+            'value': Decimal('100.00'), 'date': timezone.now().date(),
+            'description': 'Test Transfer', 'status': Transaction.Status.PENDING,
+            'origin_account': self.account_usd,
+            'destination_account': self.account_eur,
+        }
+        
+        # O request é mockado, pois o service espera um objeto request
+        mock_request = MagicMock()
+
+        transaction = create_transfer(user=self.user, request=mock_request, form_data=form_data)
+        
+        self.assertEqual(transaction.value, Decimal('100.00'))
+        self.assertEqual(transaction.exchange_rate, Decimal('0.92'))
+        self.assertEqual(transaction.converted_value, Decimal('92.00'))
+
+class TransactionQuerySetTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="service_test@email.com", password="pw")
+        country_us = Country.objects.create(code="US", currency_code="USD")
+        country_pt = Country.objects.create(code="PT", currency_code="EUR")
+        bank = Bank.objects.create(name="Service Bank")
+        acc_type = AccountType.objects.create(name="Standard")
+        self.account = Account.objects.create(owner=self.user, bank=bank, country=country_us, type=acc_type, initial_balance=1000)
+        self.end_of_last_month = timezone.now().date().replace(day=1) - relativedelta(days=1)
+        # 1. Saldo inicial: 1000
+        # 2. Despesa completada no mês passado (-100)
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, status=Transaction.Status.COMPLETED,
+            date=self.end_of_last_month, completion_date=self.end_of_last_month,
+            value=100, type=Transaction.TransactionType.EXPENSE
+        )
+        # 3. Despesa pendente no mês passado (-50, deve contar na projeção)
+        Transaction.objects.create(
+            owner=self.user, origin_account=self.account, status=Transaction.Status.PENDING,
+            date=self.end_of_last_month, value=50, type=Transaction.TransactionType.EXPENSE
+        )
+
+    def test_get_balance_until_actual(self):
+        """Testa o cálculo de saldo real."""
+        balance = Transaction.objects.filter(owner=self.user).get_balance_until(
+            account=self.account, end_date=self.end_of_last_month, is_forecasted=False
+        )
+        # Saldo inicial (1000) - Despesa completada (100) = 900
+        self.assertEqual(balance, Decimal('900.00'))
+
+    def test_get_balance_until_forecasted(self):
+        """Testa o cálculo de saldo projetado."""
+        balance = Transaction.objects.filter(owner=self.user).get_balance_until(
+            account=self.account, end_date=self.end_of_last_month, is_forecasted=True
+        )
+        # Saldo inicial (1000) - Despesa completada (100) - Despesa pendente (50) = 850
+        self.assertEqual(balance, Decimal('850.00'))        

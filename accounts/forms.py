@@ -1,6 +1,6 @@
 from django import forms
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Row, Column, Submit
+from crispy_forms.layout import Layout, Row, Column, Submit, HTML
 from crispy_bootstrap5.bootstrap5 import FloatingField
 from .models import Account, AccountType, Country
 
@@ -22,6 +22,7 @@ class AccountCreateForm(forms.ModelForm):
             ),
             FloatingField("initial_balance"),
             Submit("submit", "Save", css_class="btn btn-primary"),
+            HTML('<a href="{% url \'accounts:list\' %}" class="btn btn-outline-secondary">Cancel</a>'),
         )
 
 class AccountUpdateForm(forms.ModelForm):
@@ -41,6 +42,7 @@ class AccountUpdateForm(forms.ModelForm):
                 css_class="g-2",
             ),
             Submit("submit", "Save", css_class="btn btn-primary"),
+            HTML('<a href="{% url \'accounts:list\' %}" class="btn btn-outline-secondary">Cancel</a>'),
         )        
 
 # NOVO FORMULÁRIO PARA ACCOUNT TYPE
@@ -76,6 +78,5 @@ class CountryForm(forms.ModelForm):
             Row(
                 Column(FloatingField('currency_name'), css_class='col-md-6'),
                 Column(FloatingField('currency_symbol'), css_class='col-md-6'),
-                css_class='g-2 mt-2'
             ),
         )
