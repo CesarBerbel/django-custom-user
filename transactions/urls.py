@@ -14,6 +14,8 @@ urlpatterns = [
     path('income/create/', views.IncomeCreateView.as_view(), name='income_create'),
     path('expense/create/', views.ExpenseCreateView.as_view(), name='expense_create'),
     path('transfer/create/', views.TransferCreateView.as_view(), name='transfer_create'),
+    # NOVA URL para finalizar a criação com conversão
+    path('transfer/confirm-rate/', views.ConfirmTransferRateView.as_view(), name='transfer_confirm_rate'),
 
     # A URL de efetivação agora lida com o POST do modal
     path('<int:pk>/complete/', views.complete_transaction_view, name='complete'),

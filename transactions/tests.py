@@ -489,6 +489,7 @@ class InstallmentCreationTests(TestCase):
             # Campos de parcelamento
             'is_installment': 'on', # Checkbox marcado
             'installments_total': 12,
+            'installments_paid': 1, 
             'frequency': RecurringTransaction.Frequency.MONTHLY,
         }
         
@@ -534,6 +535,7 @@ class InstallmentCreationTests(TestCase):
             'status': Transaction.Status.PENDING,
             'is_installment': 'on',
             'installments_total': 4,
+            'installments_paid': 1,
             'frequency': RecurringTransaction.Frequency.WEEKLY,
         }
 
@@ -686,3 +688,108 @@ class TransactionQuerySetTests(TestCase):
         )
         # Saldo inicial (1000) - Despesa completada (100) - Despesa pendente (50) = 850
         self.assertEqual(balance, Decimal('850.00'))        
+
+class TransferCreationFlowTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="transfer@test.com", password="pw")
+        self.client.force_login(self.user)
+
+        # Contas com moedas diferentes
+        country_br = Country.objects.create(code="BR", currency_code="BRL", currency_symbol="R$")
+        country_pt = Country.objects.create(code="PT", currency_code="EUR", currency_symbol="€")
+        self.bank = Bank.objects.create(name="Transfer Bank")
+        self.acc_type = AccountType.objects.create(name="International")
+        self.account_brl = Account.objects.create(owner=self.user, country=country_br, bank=self.bank, type=self.acc_type, initial_balance=5000)
+        self.account_eur = Account.objects.create(owner=self.user, country=country_pt, bank=self.bank, type=self.acc_type, initial_balance=5000)
+        
+        self.create_url = reverse("transactions:transfer_create")
+        self.confirm_url = reverse("transactions:transfer_confirm_rate")
+
+    def test_create_simple_transfer_same_currency(self):
+        """Testa a criação de uma transferência normal, sem conversão."""
+        post_data = {
+            'value': 100,
+            'description': 'Simple Transfer',
+            'date': timezone.now().date().strftime('%Y-%m-%d'),
+            'origin_account': self.account_eur.pk,
+            'destination_account': self.account_eur.pk, # Erro de teste intencional, mas o form valida
+        }
+        # A validação de mesma conta já está no form.clean, então aqui apenas verificamos a criação.
+        # Criamos uma nova conta EUR para o teste.
+        another_eur_account = Account.objects.create(owner=self.user, country=self.account_eur.country, bank=self.bank, type=self.acc_type, initial_balance=0)
+        post_data = {
+            'value': 100,
+            'description': 'Simple Transfer',
+            'date': timezone.now().date().strftime('%Y-%m-%d'),
+            'origin_account': self.account_eur.pk,
+            'destination_account': another_eur_account.pk,
+            'status': Transaction.Status.PENDING, # <-- CAMPO FALTANTE ADICIONADO
+        }
+
+        response = self.client.post(self.create_url, post_data, follow=True)
+        self.assertRedirects(response, reverse("transactions:transfer_list"))
+        
+        self.assertEqual(Transaction.objects.count(), 1)
+        tx = Transaction.objects.first()
+        self.assertEqual(tx.type, Transaction.TransactionType.TRANSFER)
+        self.assertIsNone(tx.exchange_rate) # Garante que não houve conversão
+        self.assertIsNone(tx.converted_value)
+
+    @patch('accounts.services.get_conversion_rate')
+    def test_multi_currency_transfer_redirects_to_confirmation(self, mock_get_rate):
+        """Testa se uma transferência multi-moeda COMPLETED redireciona para a tela de confirmação."""
+        mock_get_rate.return_value = Decimal('0.18') # 1 BRL = 0.18 EUR
+
+        post_data = {
+            'value': 1000,
+            'description': 'BRL to EUR',
+            'date': timezone.now().date().strftime('%Y-%m-%d'),
+            'origin_account': self.account_brl.pk,
+            'destination_account': self.account_eur.pk,
+            'status': Transaction.Status.COMPLETED, # Essencial para acionar o fluxo
+        }
+
+        response = self.client.post(self.create_url, post_data)
+        
+        # 1. Verifica se houve um redirecionamento para a página de confirmação
+        self.assertRedirects(response, self.confirm_url)
+        
+        # 2. Verifica se os dados foram salvos na sessão
+        self.assertIn('pending_transfer_data', self.client.session)
+        session_data = self.client.session['pending_transfer_data']
+        self.assertEqual(session_data['value'], '1000')
+
+    @patch('accounts.services.get_conversion_rate')
+    def test_finalize_multi_currency_transfer(self, mock_get_rate):
+        """Testa o segundo passo: confirmação e criação final da transferência."""
+        mock_get_rate.return_value = Decimal('0.18')
+
+        # Passo 1: Simula o primeiro POST e a configuração da sessão
+        session = self.client.session
+        session['pending_transfer_data'] = {
+            'value': '1000', 'date': '2025-10-20', 'description': 'BRL to EUR',
+            'origin_account_id': self.account_brl.pk, 'destination_account_id': self.account_eur.pk
+        }
+        session.save()
+        
+        # Passo 2: Simula o POST da página de confirmação
+        confirm_post_data = {
+            'exchange_rate': '0.185' # Usuário pode ter editado a taxa
+        }
+        
+        response = self.client.post(self.confirm_url, confirm_post_data, follow=True)
+        self.assertRedirects(response, reverse("transactions:transfer_list"))
+        
+        # 3. Verifica se a sessão foi limpa
+        self.assertNotIn('pending_transfer_data', self.client.session)
+        
+        # 4. Verifica se a transação foi criada corretamente com os novos valores
+        self.assertEqual(Transaction.objects.count(), 1)
+        tx = Transaction.objects.first()
+        
+        self.assertEqual(tx.owner, self.user)
+        self.assertEqual(tx.status, Transaction.Status.COMPLETED)
+        self.assertEqual(tx.value, Decimal('1000'))
+        self.assertEqual(tx.exchange_rate, Decimal('0.185'))
+        self.assertEqual(tx.converted_value, Decimal('185.00')) # 1000 * 0.185

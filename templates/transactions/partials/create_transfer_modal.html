@@ -1,0 +1,32 @@
+{% load money_extras %}
+{% load crispy_forms_tags %}
+<div class="modal fade show" id="createTransferModal" style="display: block;" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+        <form hx-post="{% url 'transactions:transfer_finalize_creation' %}" hx-target="body">
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Exchange Rate for Creation</h5>
+                <button type="button" class="btn-close" onclick="document.getElementById('modal-placeholder').innerHTML = ''"></button>
+            </div>
+            <div class="modal-body">
+                <p>You are creating a <strong>completed</strong> transfer between different currencies. Please confirm the rate.</p>
+                
+                {% crispy modal_form %}
+
+                <!-- Campos ocultos para passar os dados originais -->
+                <input type="hidden" name="value" value="{{ original_form_data.value }}">
+                <input type="hidden" name="date" value="{{ original_form_data.date|date:'Y-m-d' }}">
+                <input type="hidden" name="description" value="{{ original_form_data.description }}">
+                <input type="hidden" name="origin_account" value="{{ original_form_data.origin_account.pk }}">
+                <input type="hidden" name="destination_account" value="{{ original_form_data.destination_account.pk }}">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-placeholder').innerHTML = ''">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create and Complete Transfer</button>
+            </div>
+        </form>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop fade show"></div>

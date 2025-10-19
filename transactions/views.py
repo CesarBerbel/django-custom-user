@@ -14,7 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from django.views.generic import CreateView, ListView, UpdateView, DeleteView
+from django.views.generic import CreateView, ListView, UpdateView, DeleteView, FormView
 from django.http import HttpResponse
 from accounts.models import Account
 from accounts.services import get_conversion_rate
@@ -25,6 +25,7 @@ from .forms import (
     CategoryForm, CompleteTransferForm
 )
 from .services import create_installments, create_transfer
+from django.template.loader import render_to_string
 
 # ==============================================================================
 # VIEW DE AÇÃO SIMPLES
@@ -170,26 +171,93 @@ class TransferCreateView(LoginRequiredMixin, CreateView):
 
     # --- MÉTODO form_valid REFATORADO ---
     def form_valid(self, form):
-        """
-_ _       Delega a lógica de criação da transferência para a camada de serviço.
-        """
+        origin_account = form.cleaned_data.get('origin_account')
+        destination_account = form.cleaned_data.get('destination_account')
+        status = form.cleaned_data.get('status')
+        is_multi_currency = origin_account.country.currency_code != destination_account.country.currency_code
+        
+        # Se for uma transferência multi-moeda e COMPLETED...
+        if is_multi_currency and status == Transaction.Status.COMPLETED:
+            # 1. Guarda os dados válidos do formulário na sessão.
+            # Convertemos para IDs e strings para garantir que seja serializável.
+            self.request.session['pending_transfer_data'] = {
+                'value': str(form.cleaned_data['value']),
+                'date': form.cleaned_data['date'].isoformat(),
+                'description': form.cleaned_data['description'],
+                'origin_account_id': origin_account.pk,
+                'destination_account_id': destination_account.pk,
+            }
+            # 2. Redireciona para a nova página de confirmação.
+            return redirect('transactions:transfer_confirm_rate')
+
+        # Comportamento normal para transferências simples ou pendentes
+        form.instance.owner = self.request.user
+        form.instance.type = Transaction.TransactionType.TRANSFER
+        messages.success(self.request, "Transfer created successfully.")
+        return super().form_valid(form)
+
+# Nova View para a página de confirmação
+from .forms import CompleteTransferForm
+
+class ConfirmTransferRateView(LoginRequiredMixin, FormView):
+    form_class = CompleteTransferForm
+    template_name = 'transactions/transfer_confirm_rate.html'
+    success_url = reverse_lazy('transactions:transfer_list')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Resgata os dados da sessão
+        transfer_data = self.request.session.get('pending_transfer_data')
+        if not transfer_data:
+            return context # Lidar com o erro de alguma forma
+        
+        # Reconstitui os objetos para exibir informações na página
+        context['origin_account'] = get_object_or_404(Account, pk=transfer_data['origin_account_id'])
+        context['destination_account'] = get_object_or_404(Account, pk=transfer_data['destination_account_id'])
+        context['value'] = Decimal(transfer_data['value'])
+        
+        return context
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        # Pre-preenche o formulário com a taxa de câmbio
+        transfer_data = self.request.session.get('pending_transfer_data', {})
+        origin_account = Account.objects.get(pk=transfer_data.get('origin_account_id'))
+        dest_account = Account.objects.get(pk=transfer_data.get('destination_account_id'))
+        
         try:
-            # Chama o serviço, passando os dados do formulário
-            transaction = create_transfer(
-                user=self.request.user,
-                request=self.request, # Passa o request para as mensagens
-                form_data=form.cleaned_data
-            )
-            self.object = transaction
-            messages.success(self.request, "Transfer created successfully.")
-            return redirect(self.get_success_url())
-
-        except Exception as e:
-            # Captura a exceção lançada pelo serviço em caso de erro
-            form.add_error(None, str(e)) # Adiciona o erro ao topo do formulário
-            return self.form_invalid(form)
-
-
+            rate = get_conversion_rate(origin_account.country.currency_code, dest_account.country.currency_code)
+            six_places = Decimal('1.000000')
+            kwargs['initial'] = {'exchange_rate': Decimal(rate).quantize(six_places)}
+        except Exception:
+            pass # Deixa o campo em branco se a API falhar
+        
+        return kwargs
+        
+    def form_valid(self, form):
+        # Finalmente, cria a transação aqui
+        transfer_data = self.request.session.pop('pending_transfer_data', None)
+        if not transfer_data:
+            messages.error(self.request, "Session expired. Please try again.")
+            return redirect('transactions:transfer_create')
+            
+        rate = form.cleaned_data['exchange_rate']
+        
+        Transaction.objects.create(
+            owner=self.request.user,
+            type=Transaction.TransactionType.TRANSFER,
+            status=Transaction.Status.COMPLETED,
+            value=Decimal(transfer_data['value']),
+            date=datetime.date.fromisoformat(transfer_data['date']),
+            description=transfer_data['description'],
+            origin_account_id=transfer_data['origin_account_id'],
+            destination_account_id=transfer_data['destination_account_id'],
+            exchange_rate=rate,
+            converted_value=Decimal(transfer_data['value']) * rate
+        )
+        
+        messages.success(self.request, "Transfer created and completed successfully with custom rate.")
+        return super().form_valid(form)
 # ==============================================================================
 # VIEWS DE LISTAGEM
 # ==============================================================================
@@ -228,7 +296,6 @@ class BaseMonthlyListView(LoginRequiredMixin, ListView):
         context['next_month'] = self.report_date + relativedelta(months=1)
         context['base_url_name'] = self.request.resolver_match.url_name.replace('_specific', '')
         return context
-
 
 class TransactionTypeListView(BaseMonthlyListView):
     """
