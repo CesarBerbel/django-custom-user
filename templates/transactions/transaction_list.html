@@ -152,17 +152,17 @@
                         <td>{{ tx.category.name|default:"-" }}</td>
                         <td>
                             {% if tx.type == 'EXPENSE' and tx.origin_account %}
-                                <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">{{ tx.origin_account.bank }}</a>
+                                <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">{{ tx.origin_account }}</a>
                             {% elif tx.type == 'INCOME' and tx.destination_account %}
-                                <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">{{ tx.destination_account.bank }}</a>
+                                <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">{{ tx.destination_account }}</a>
                             {% elif tx.type == 'TRANSFER' %}
                                 <div>
                                     <small class="text-muted d-block">From:</small>
-                                    <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">{{ tx.origin_account.bank }}</a>
+                                    <a href="{% url 'transactions:list_by_account' tx.origin_account.pk %}">{{ tx.origin_account }}</a>
                                 </div>
                                 <div class="mt-1">
                                     <small class="text-muted d-block">To:</small>
-                                    <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">{{ tx.destination_account.bank }}</a>
+                                    <a href="{% url 'transactions:list_by_account' tx.destination_account.pk %}">{{ tx.destination_account }}</a>
                                 </div>
                             {% endif %}
                         </td>
@@ -190,16 +190,31 @@
                              </span>
                         </td>
                         <td class="text-center">
-                            {% if tx.status == 'PENDING' or tx.status == 'OVERDUE' %}
-                                <form method="post" action="{% url 'transactions:complete' tx.pk %}" class="d-inline">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Mark as Completed">
-                                        <i class="bi bi-check-circle"></i>
-                                    </button>
-                                </form>
-                            {% else %}
-                                -
-                            {% endif %}
+                          {% if tx.status == 'PENDING' or tx.status == 'OVERDUE' %}
+                              <!-- BOTÃO DE EFETIVAÇÃO MODIFICADO -->
+                              {% if tx.type == 'TRANSFER' and tx.origin_account.country != tx.destination_account.country %}
+                                  <!-- Botão que abre o modal para transferências multi-moeda -->
+                                  <button type="button" class="btn btn-sm btn-outline-success"
+                                          data-bs-toggle="modal"
+                                          data-bs-target="#completeTransferModal"
+                                          hx-get="{% url 'transactions:prepare_complete_transfer' tx.pk %}"
+                                          hx-target="#modal-content-placeholder"
+                                          hx-swap="innerHTML"
+                                          title="Complete Transfer with Conversion">
+                                      <i class="bi bi-check-circle"></i>
+                                  </button>
+                              {% else %}
+                                  <!-- Formulário de POST direto para transações normais -->
+                                  <form method="post" action="{% url 'transactions:complete' tx.pk %}" class="d-inline">
+                                      {% csrf_token %}
+                                      <button type="submit" class="btn btn-sm btn-outline-success" title="Mark as Completed">
+                                          <i class="bi bi-check-circle"></i>
+                                      </button>
+                                  </form>
+                              {% endif %}
+                          {% else %}
+                              -
+                          {% endif %}
                         </td>
                     </tr>
                     {% empty %}
@@ -210,4 +225,16 @@
         </div>
     </div>
 </div>
+  <div class="modal fade" id="completeTransferModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content" id="modal-content-placeholder">
+              <!-- O conteúdo será carregado aqui. O spinner pode ser o conteúdo inicial -->
+              <div class="modal-body text-center p-4">
+                  <div class="spinner-border" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
 {% endblock %}

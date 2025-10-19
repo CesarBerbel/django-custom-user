@@ -15,7 +15,11 @@ urlpatterns = [
     path('expense/create/', views.ExpenseCreateView.as_view(), name='expense_create'),
     path('transfer/create/', views.TransferCreateView.as_view(), name='transfer_create'),
 
+    # A URL de efetivação agora lida com o POST do modal
     path('<int:pk>/complete/', views.complete_transaction_view, name='complete'),
+    
+    # NOVA URL para obter os dados e renderizar o modal (via HTMX ou AJAX)
+    path('<int:pk>/prepare-complete/', views.prepare_complete_transfer_view, name='prepare_complete_transfer'),
     
     # View para listar transações de uma conta específica
     path('account/<int:account_id>/', views.TransactionByAccountListView.as_view(), name='list_by_account'),

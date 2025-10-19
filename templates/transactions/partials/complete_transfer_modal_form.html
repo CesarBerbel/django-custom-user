@@ -1,0 +1,53 @@
+{% load money_extras %}
+{% load crispy_forms_tags %}
+<!-- Este é o conteúdo que será injetado no modal -->
+<form hx-post="{% url 'transactions:complete' transaction.pk %}" 
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+      hx-target="body" hx-swap="outerHTML">
+
+  <div class="modal-header">
+    <h5 class="modal-title">Complete Transfer</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  </div>
+  <div class="modal-body">
+    
+    {% if error_message %}
+      <div class="alert alert-warning small">{{ error_message }}</div>
+    {% endif %}
+
+    <p>Confirm the exchange rate for transferring
+      <strong>{% money transaction.value transaction.origin_account.country %}</strong>.
+    </p>
+
+    {% crispy form %}
+
+    <div id="converted-value-preview" class="mt-2 text-center bg-light p-2 rounded small">
+        Calculated destination value: --
+    </div>
+
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="submit" class="btn btn-success">Complete Transaction</button>
+  </div>
+</form>
+
+<script>
+    // Script para calcular o preview do valor convertido em tempo real
+    const rateInput = document.getElementById('id_exchange_rate');
+    const previewDiv = document.getElementById('converted-value-preview');
+    const originalValue = {{ transaction.value|stringformat:"f" }};
+    const destSymbol = "{{ transaction.destination_account.country.currency_symbol|default:transaction.destination_account.country.currency_code }}";
+
+    function updatePreview() {
+        const rate = parseFloat(rateInput.value);
+        if (rate > 0) {
+            const converted = (originalValue * rate).toFixed(2);
+            previewDiv.innerHTML = `Destination will receive approx. <strong>${destSymbol} ${converted}</strong>`;
+        } else {
+            previewDiv.innerHTML = 'Calculated destination value: --';
+        }
+    }
+    rateInput.addEventListener('input', updatePreview);
+    updatePreview(); // Calcula o preview inicial
+</script> 
