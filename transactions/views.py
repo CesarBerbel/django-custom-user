@@ -8,22 +8,24 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Sum, Q, DecimalField, Case, When, Value
+from django.db.models import Sum, Q, DecimalField, Case, When
 from django.db.models.functions import Coalesce 
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from django.views.generic import CreateView, ListView, UpdateView, DeleteView
-
+from django.views.generic import CreateView, ListView, UpdateView, DeleteView, FormView
+from django.http import HttpResponse
 from accounts.models import Account
+from accounts.services import get_conversion_rate
 from users.models import UserPreferences
-from .models import Transaction, Category, RecurringTransaction
+from .models import Transaction, Category
 from .forms import (
     IncomeForm, ExpenseForm, TransferForm, 
-    CategoryForm, RecurringTransactionForm
+    CategoryForm, CompleteTransferForm
 )
 from .services import create_installments, create_transfer
+from django.template.loader import render_to_string
 
 # ==============================================================================
 # VIEW DE AÇÃO SIMPLES
@@ -32,25 +34,59 @@ from .services import create_installments, create_transfer
 @login_required
 @require_POST
 def complete_transaction_view(request, pk):
-    """
-    View "magra" que encontra uma transação e delega a ação de
-    efetivação para o próprio objeto de transação.
-    """
-    # 1. Busca a transação de forma segura
     transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
-    
-    # 2. Delega a lógica de negócio para o método do modelo
-    success = transaction.complete()
-    
-    # 3. Fornece feedback ao usuário com base no resultado
-    if success:
-        messages.success(request, f"Transaction '{transaction.description}' marked as completed.")
-    else:
-        messages.warning(request, "This transaction may have already been completed.")
-            
-    # Redireciona de volta
-    return redirect(request.META.get('HTTP_REFERER', reverse_lazy('transactions:expense_list')))
 
+    # Condição de saída nº 1: já está completa
+    if transaction.status == Transaction.Status.COMPLETED:
+        messages.warning(request, "This transaction has already been completed.")
+        return refresh_page_or_redirect(request) # Helper que vamos recriar
+
+    is_multi_currency = (
+        transaction.type == Transaction.TransactionType.TRANSFER and
+        transaction.origin_account and transaction.destination_account and
+        transaction.origin_account.country.currency_code != transaction.destination_account.country.currency_code
+    )
+
+    if is_multi_currency:
+        form = CompleteTransferForm(request.POST)
+        if form.is_valid():
+            rate = form.cleaned_data['exchange_rate']
+            transaction.exchange_rate = rate
+            transaction.converted_value = transaction.value * rate
+            messages.info(request, f"Rate of {rate:.4f} applied.") # Adiciona uma msg info útil
+        else:
+            # Condição de saída nº 2: formulário inválido
+            error_msg = "Invalid data. " + form.errors.as_text().replace('\n', ' ')
+            messages.error(request, error_msg)
+            return refresh_page_or_redirect(request)
+    
+    # Se chegamos aqui, a transação é válida para ser completada
+    # (seja normal ou multi-moeda com form válido)
+    transaction.complete()
+    
+    # Adiciona a mensagem de sucesso apropriada
+    if is_multi_currency:
+        messages.success(request, "Transfer completed with custom exchange rate.")
+    else:
+        messages.success(request, f"Transaction '{transaction.description}' marked as completed.")
+        
+    # Redireciona em caso de sucesso
+    return refresh_page_or_redirect(request)
+
+
+def refresh_page_or_redirect(request):
+    """
+    Se o request é do HTMX, retorna uma resposta para forçar o reload da página.
+    Senão, retorna um redirect normal.
+    """
+    if 'HX-Request' in request.headers:
+        response = HttpResponse(status=204)
+        response['HX-Refresh'] = 'true' # Força o refresh da página no lado do cliente
+        return response
+    
+    # Fallback para o redirect normal
+    redirect_url = request.META.get('HTTP_REFERER', reverse_lazy('transactions:expense_list'))
+    return redirect(redirect_url)
 
 # ==============================================================================
 # VIEWS DE CRIAÇÃO
@@ -135,26 +171,93 @@ class TransferCreateView(LoginRequiredMixin, CreateView):
 
     # --- MÉTODO form_valid REFATORADO ---
     def form_valid(self, form):
-        """
-_ _       Delega a lógica de criação da transferência para a camada de serviço.
-        """
+        origin_account = form.cleaned_data.get('origin_account')
+        destination_account = form.cleaned_data.get('destination_account')
+        status = form.cleaned_data.get('status')
+        is_multi_currency = origin_account.country.currency_code != destination_account.country.currency_code
+        
+        # Se for uma transferência multi-moeda e COMPLETED...
+        if is_multi_currency and status == Transaction.Status.COMPLETED:
+            # 1. Guarda os dados válidos do formulário na sessão.
+            # Convertemos para IDs e strings para garantir que seja serializável.
+            self.request.session['pending_transfer_data'] = {
+                'value': str(form.cleaned_data['value']),
+                'date': form.cleaned_data['date'].isoformat(),
+                'description': form.cleaned_data['description'],
+                'origin_account_id': origin_account.pk,
+                'destination_account_id': destination_account.pk,
+            }
+            # 2. Redireciona para a nova página de confirmação.
+            return redirect('transactions:transfer_confirm_rate')
+
+        # Comportamento normal para transferências simples ou pendentes
+        form.instance.owner = self.request.user
+        form.instance.type = Transaction.TransactionType.TRANSFER
+        messages.success(self.request, "Transfer created successfully.")
+        return super().form_valid(form)
+
+# Nova View para a página de confirmação
+from .forms import CompleteTransferForm
+
+class ConfirmTransferRateView(LoginRequiredMixin, FormView):
+    form_class = CompleteTransferForm
+    template_name = 'transactions/transfer_confirm_rate.html'
+    success_url = reverse_lazy('transactions:transfer_list')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Resgata os dados da sessão
+        transfer_data = self.request.session.get('pending_transfer_data')
+        if not transfer_data:
+            return context # Lidar com o erro de alguma forma
+        
+        # Reconstitui os objetos para exibir informações na página
+        context['origin_account'] = get_object_or_404(Account, pk=transfer_data['origin_account_id'])
+        context['destination_account'] = get_object_or_404(Account, pk=transfer_data['destination_account_id'])
+        context['value'] = Decimal(transfer_data['value'])
+        
+        return context
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        # Pre-preenche o formulário com a taxa de câmbio
+        transfer_data = self.request.session.get('pending_transfer_data', {})
+        origin_account = Account.objects.get(pk=transfer_data.get('origin_account_id'))
+        dest_account = Account.objects.get(pk=transfer_data.get('destination_account_id'))
+        
         try:
-            # Chama o serviço, passando os dados do formulário
-            transaction = create_transfer(
-                user=self.request.user,
-                request=self.request, # Passa o request para as mensagens
-                form_data=form.cleaned_data
-            )
-            self.object = transaction
-            messages.success(self.request, "Transfer created successfully.")
-            return redirect(self.get_success_url())
-
-        except Exception as e:
-            # Captura a exceção lançada pelo serviço em caso de erro
-            form.add_error(None, str(e)) # Adiciona o erro ao topo do formulário
-            return self.form_invalid(form)
-
-
+            rate = get_conversion_rate(origin_account.country.currency_code, dest_account.country.currency_code)
+            six_places = Decimal('1.000000')
+            kwargs['initial'] = {'exchange_rate': Decimal(rate).quantize(six_places)}
+        except Exception:
+            pass # Deixa o campo em branco se a API falhar
+        
+        return kwargs
+        
+    def form_valid(self, form):
+        # Finalmente, cria a transação aqui
+        transfer_data = self.request.session.pop('pending_transfer_data', None)
+        if not transfer_data:
+            messages.error(self.request, "Session expired. Please try again.")
+            return redirect('transactions:transfer_create')
+            
+        rate = form.cleaned_data['exchange_rate']
+        
+        Transaction.objects.create(
+            owner=self.request.user,
+            type=Transaction.TransactionType.TRANSFER,
+            status=Transaction.Status.COMPLETED,
+            value=Decimal(transfer_data['value']),
+            date=datetime.date.fromisoformat(transfer_data['date']),
+            description=transfer_data['description'],
+            origin_account_id=transfer_data['origin_account_id'],
+            destination_account_id=transfer_data['destination_account_id'],
+            exchange_rate=rate,
+            converted_value=Decimal(transfer_data['value']) * rate
+        )
+        
+        messages.success(self.request, "Transfer created and completed successfully with custom rate.")
+        return super().form_valid(form)
 # ==============================================================================
 # VIEWS DE LISTAGEM
 # ==============================================================================
@@ -193,7 +296,6 @@ class BaseMonthlyListView(LoginRequiredMixin, ListView):
         context['next_month'] = self.report_date + relativedelta(months=1)
         context['base_url_name'] = self.request.resolver_match.url_name.replace('_specific', '')
         return context
-
 
 class TransactionTypeListView(BaseMonthlyListView):
     """
@@ -405,3 +507,47 @@ class CategoryDeleteView(LoginRequiredMixin, DeleteView):
     def form_valid(self, form):
         messages.warning(self.request, "Category deleted successfully.")
         return super().form_valid(form)
+    
+@login_required
+def prepare_complete_transfer_view(request, pk):
+    """
+    Busca os dados para o modal de efetivação de transferência.
+    Retorna o fragmento de HTML do formulário para o HTMX.
+    """
+    transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
+    
+    initial_rate = None
+    error_message = None # Para passar uma mensagem ao template se a API falhar
+
+    # Garante que temos contas para a conversão
+    if transaction.origin_account and transaction.destination_account:
+        origin_currency = transaction.origin_account.country.currency_code
+        dest_currency = transaction.destination_account.country.currency_code
+        
+        if origin_currency != dest_currency:
+            try:
+                raw_rate = get_conversion_rate(origin_currency, dest_currency)
+
+                # --- LÓGICA DE ARREDONDAMENTO APLICADA AQUI ---
+                # Garante que 'raw_rate' seja um Decimal antes de arredondar
+                if raw_rate is not None:
+                    # Decimal('1.000000') define o "quantum" ou o número de casas decimais
+                    six_places = Decimal('1.000000')
+                    # .quantize() é o método para arredondamento preciso
+                    initial_rate = Decimal(raw_rate).quantize(six_places)
+                # --- FIM DO ARREDONDAMENTO ---
+
+            except Exception as e:
+                error_message = f"Could not fetch live exchange rate: {e}"
+                print(error_message)
+
+    # Preenche o formulário com a taxa inicial (ou deixa em branco)
+    form = CompleteTransferForm(initial={'exchange_rate': initial_rate})
+    
+    context = {
+        'transaction': transaction,
+        'form': form,
+        'error_message': error_message
+    }
+    
+    return render(request, 'transactions/partials/complete_transfer_modal_form.html', context)

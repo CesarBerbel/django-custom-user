@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% load money_extras %}
+
+{% block title %}Confirm Transfer Rate{% endblock %}
+{% block header %}Confirm Exchange Rate{% endblock %}
+
+{% block content %}
+  <div class="card mx-auto" style="max-width: 600px;">
+    <div class="card-body">
+        <h5 class="card-title">You are creating a completed transfer:</h5>
+        <div class="lead border-bottom pb-3 mb-3">
+            <div>
+                <span class="text-muted">From:</span>
+                <strong>{% money value origin_account.country %}</strong>
+            </div>
+            <div>
+                <span class="text-muted">To:</span>
+                <strong>{{ destination_account.country.currency_code }}</strong>
+            </div>
+        </div>
+
+        <p class="text-muted">Please confirm or edit the exchange rate for this transaction.</p>
+
+        <form method="post">
+            {% csrf_token %}
+            {% crispy form %}
+
+            <!-- DIV DE PREVIEW (como no modal) -->
+            <div id="converted-value-preview" class="mt-3 text-center bg-light p-2 rounded">
+                Calculated destination value will appear here.
+            </div>
+
+            <div class="mt-4 pt-3 border-top">
+                <button type="submit" class="btn btn-primary">Confirm and Complete Transfer</button>
+                <a href="{% url 'transactions:transfer_list' %}" class="btn btn-outline-secondary ms-2">Cancel</a>
+            </div>
+        </form>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rateInput = document.getElementById('id_exchange_rate');
+    const previewDiv = document.getElementById('converted-value-preview');
+    // Passamos os valores da view para o JavaScript
+    const originalValue = {{ value|stringformat:"f" }};
+    const destSymbol = "{{ destination_account.country.currency_symbol|default:destination_account.country.currency_code }}";
+
+    function updatePreview() {
+        const rate = parseFloat(rateInput.value);
+        if (!isNaN(rate) && rate > 0) {
+            const converted = (originalValue * rate).toFixed(2);
+            // Formata a string para incluir o símbolo da moeda
+            previewDiv.innerHTML = `Destination account will receive approx. <strong>${destSymbol} ${converted}</strong>`;
+        } else {
+            previewDiv.innerHTML = 'Enter a valid rate to see the converted value.';
+        }
+    }
+
+    // Garante que o input existe antes de adicionar o listener
+    if (rateInput) {
+        rateInput.addEventListener('input', updatePreview);
+        // Calcula o preview inicial assim que a página carrega
+        updatePreview();
+    }
+});
+</script>
+{% endblock %}

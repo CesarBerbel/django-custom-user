@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.http import HttpRequest
 from accounts.services import get_conversion_rate, get_exchange_rates
+from django.http import HttpResponse
 
 def create_installments(
     *, 

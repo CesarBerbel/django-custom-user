@@ -282,3 +282,22 @@ class RecurringTransactionForm(forms.ModelForm):
         
         # Deixaremos o usuário escolher qualquer categoria por enquanto, mas podemos filtrar
         self.fields['category'].queryset = Category.objects.filter(owner=user)    
+
+class CompleteTransferForm(forms.Form):
+    # Usamos DecimalField para precisão
+    exchange_rate = forms.DecimalField(
+        max_digits=18, decimal_places=8,
+        label="Exchange Rate",
+        help_text="The rate applied for this specific transaction.",
+        localize=True
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            FloatingField('exchange_rate'),
+            # O botão de submit será parte do modal, não do crispy
+        )        
