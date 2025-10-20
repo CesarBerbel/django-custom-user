@@ -162,9 +162,32 @@ class Transaction(models.Model):
             self._reverse_balance_changes(old_instance)
 
     def delete(self, *args, **kwargs):
+        """
+        Garante que o saldo seja revertido ANTES de deletar o objeto,
+        e reconcilia os saldos das contas envolvidas se elas ficarem sem transações.
+        """
+
+        # Guarda as contas envolvidas ANTES de deletar os relacionamentos
+        origin_account = self.origin_account
+        destination_account = self.destination_account
+        
+        # Reverte o impacto no saldo se a transação estava completada
         if self.status == self.Status.COMPLETED:
             self._reverse_balance_changes(self)
-        return super().delete(*args, **kwargs)
+        
+        # Executa a exclusão do banco de dados
+        result = super().delete(*args, **kwargs)
+
+        # --- RECONCILIAÇÃO PÓS-DELEÇÃO ---
+        # Agora, após a exclusão, verifica se as contas ficaram vazias
+        if origin_account:
+            origin_account.reconcile_balance()
+        if destination_account:
+            # Garante que não é a mesma conta em uma transferência simples
+            if destination_account != origin_account:
+                destination_account.reconcile_balance()
+        
+        return result
 
     def _process_balance_changes(self):
         if self.type == self.TransactionType.EXPENSE and self.origin_account:

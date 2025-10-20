@@ -149,3 +149,21 @@ class Account(models.Model):
             self.active = False
             self.deactivated_at = timezone.now()
             self.save(update_fields=["active", "deactivated_at", "updated_at"])        
+
+    def reconcile_balance(self):
+        """
+        Verifica se a conta não tem mais transações e, em caso afirmativo,
+        redefine o saldo para o saldo inicial para corrigir erros de arredondamento.
+        Retorna True se o saldo foi redefinido, False caso contrário.
+        """
+        # Verifica se existe ALGUMA transação (enviada ou recebida) para esta conta
+        has_transactions = self.sent_transactions.exists() or self.received_transactions.exists()
+
+        if not has_transactions:
+            # Se não houver transações, e o saldo atual for diferente do inicial
+            if self.balance != self.initial_balance:
+                # Força a redefinição e salva
+                self.balance = self.initial_balance
+                self.save(update_fields=['balance'])
+                return True
+        return False

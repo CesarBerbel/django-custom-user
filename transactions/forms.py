@@ -68,6 +68,7 @@ class IncomeForm(TransactionBaseForm):
         super().__init__(user, *args, **kwargs)
         self.fields['category'].queryset = Category.objects.filter(owner=self.user, type=Category.TransactionType.INCOME)
         self.fields['origin_account'].widget = forms.HiddenInput() # Esconde o campo
+        self.fields['destination_account'].required = True
 
         self.helper.layout = Layout(
             FloatingField('value', wrapper_class='mb-2'), # Usaremos valor como 'valor por parcela'
@@ -118,6 +119,7 @@ class ExpenseForm(TransactionBaseForm):
         super().__init__(user, *args, **kwargs)
         self.fields['category'].queryset = Category.objects.filter(owner=self.user, type=Category.TransactionType.EXPENSE)
         self.fields['destination_account'].widget = forms.HiddenInput()
+        self.fields['origin_account'].required = True
 
         self.helper.layout = Layout(
             FloatingField('value', wrapper_class='mb-2'), # Usaremos valor como 'valor por parcela'
@@ -167,6 +169,8 @@ class TransferForm(TransactionBaseForm):
     def __init__(self, user, *args, **kwargs):
         super().__init__(user, *args, **kwargs)
         self.fields['category'].widget = forms.HiddenInput()
+        self.fields['origin_account'].required = True
+        self.fields['destination_account'].required = True
         
         self.helper.layout = Layout(
             FloatingField('value'),
@@ -226,6 +230,7 @@ class CategoryForm(forms.ModelForm):
         self.user = user
         self.helper = FormHelper()
         self.helper.form_method = 'post'
+        self.helper.form_tag = False
         self.helper.layout = Layout(
             FloatingField('name'),
             FloatingField('type'),
