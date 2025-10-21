@@ -83,8 +83,52 @@
         </div>
       </div>
     </div>
-
+{% elif transaction_type == 'TRANSFER' %}
+    <!-- NOVO MODO DE RESUMO PARA TRANSFERÊNCIAS -->
+    <div class="row g-3 mb-4">
+        <!-- Coluna de Saídas -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted"><i class="bi bi-box-arrow-up-right text-danger"></i> Outflows This Month</h6>
+                    <ul class="list-group list-group-flush">
+                        {% for outflow in summary.outflows %}
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>{{ outflow.origin_account__country__currency_code }}</span>
+                                <strong class="text-danger">
+                                    - {{ outflow.origin_account__country__currency_symbol }} {{ outflow.total_out|stringformat:".2f" }}
+                                </strong>
+                            </li>
+                        {% empty %}
+                            <li class="list-group-item text-muted">No outflows this month.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <!-- Coluna de Entradas -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted"><i class="bi bi-box-arrow-in-down-left text-success"></i> Inflows This Month</h6>
+                    <ul class="list-group list-group-flush">
+                        {% for inflow in summary.inflows %}
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>{{ inflow.destination_account__country__currency_code }}</span>
+                                <strong class="text-success">
+                                    + {{ inflow.destination_account__country__currency_symbol }} {{ inflow.total_in|stringformat:".2f" }}
+                                </strong>
+                            </li>
+                        {% empty %}
+                            <li class="list-group-item text-muted">No inflows this month.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
 {% else %}
+
   <!-- MODO LISTA POR TIPO (Permanece como estava) -->
   <div class="row g-3 mb-4">
     <div class="col-md-6">
