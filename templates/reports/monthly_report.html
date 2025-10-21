@@ -38,7 +38,7 @@
                 {% for account in all_accounts %}
                   <li>
                     <a class="dropdown-item" href="{% url 'reports:monthly_by_account_specific' current_month.year current_month.month account.id %}">
-                      {{ account.bank }}
+                      {{ account }}
                     </a>
                   </li>
                 {% endfor %}
