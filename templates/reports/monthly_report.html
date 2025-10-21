@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Monthly Report{% endblock %}
+{% block header %}Monthly Report{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <!-- Navegação de Mês -->
+        <a href="{% url 'reports:monthly' previous_month.year previous_month.month %}" class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i> Previous Month
+        </a>
+        <h4 class="mb-0">{{ current_month|date:"F Y" }}</h4>
+        <a href="{% url 'reports:monthly' next_month.year next_month.month %}" class="btn btn-outline-secondary">
+            Next Month <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+    <div class="card-body">
+        <h5 class="text-center text-muted p-5">
+            Report data will be here.
+        </h5>
+    </div>
+</div>
+{% endblock %}

@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'accounts',
     'appointments',
     'transactions',
+    'reports',
 ]
 
 # Crispy configuration (use Bootstrap 5)

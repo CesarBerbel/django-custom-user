@@ -65,6 +65,11 @@
                   <li><a class="dropdown-item text-info" href="{% url 'transactions:transfer_create' %}"><i class="bi bi-shuffle me-2"></i>New Transfer</a></li>
               </ul>
           </li>
+          <li class="nav-item">
+            <a href="{% url 'reports:index' %}" class="nav-link {% if request.resolver_match.app_name == 'reports' %}active{% endif %}">
+              Reports
+            </a>
+          </li>
         </ul>
         {% endif %}
       </div>
