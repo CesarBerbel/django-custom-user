@@ -2,6 +2,7 @@
 # Arquivo: reports/views.py
 #
 import datetime
+import json
 from django.views.generic import RedirectView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
@@ -73,4 +74,39 @@ class MonthlyReportView(LoginRequiredMixin, TemplateView):
             'balance_forecasted': income_forecasted - expense_forecasted,
         }
         
+        expense_transactions = transactions.filter(type=Transaction.TransactionType.EXPENSE)
+        
+        category_spending = expense_transactions.values(
+            'category__name', 'category__color'
+        ).annotate(
+            total=Sum('value')
+        ).order_by('-total')
+
+        uncategorized_total = expense_transactions.filter(category__isnull=True).aggregate(total=Sum('value'))['total'] or 0
+
+        # Prepara os dados para o gráfico Chart.js
+        chart_labels = [item['category__name'] or 'Uncategorized' for item in category_spending]
+        
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Converte cada 'Decimal' em 'str' para que seja serializável em JSON.
+        chart_data = [str(item['total']) for item in category_spending]
+        # --- FIM DA CORREÇÃO ---
+        
+        chart_colors = [item['category__color'] or '#808080' for item in category_spending]
+
+        # Adiciona o total de não categorizados se houver
+        if uncategorized_total > 0 and 'Uncategorized' not in chart_labels:
+             chart_labels.append('Uncategorized')
+             # --- CORREÇÃO APLICADA AQUI TAMBÉM ---
+             chart_data.append(str(uncategorized_total))
+             chart_colors.append('#808080')
+             
+        # Adiciona ao contexto
+        context['category_spending'] = {
+            'labels': json.dumps(chart_labels),
+            'data': json.dumps(chart_data), # Agora `chart_data` é uma lista de strings
+            'colors': json.dumps(chart_colors),
+            'raw_data': category_spending
+        }
+
         return context
