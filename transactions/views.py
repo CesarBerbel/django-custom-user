@@ -8,8 +8,8 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Sum, Q, DecimalField, Case, When
-from django.db.models.functions import Coalesce 
+from django.db.models import Sum, Q, DecimalField, Case, When, F, DecimalField
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -27,6 +27,7 @@ from .forms import (
 from .services import create_installments, create_transfer
 from django.template.loader import render_to_string
 from .forms import CompleteTransferForm
+from django.db import models
 
 # ==============================================================================
 # VIEW DE AÇÃO SIMPLES
@@ -399,6 +400,56 @@ class ExpenseListView(TransactionTypeListView):
 
 class TransferListView(TransactionTypeListView):
     transaction_type = Transaction.TransactionType.TRANSFER
+
+    def get_context_data(self, **kwargs):
+        """
+        Sobrescreve o contexto para criar um resumo de transferências
+        agrupado por moeda.
+        """
+
+        # Primeiro, chama o get_context_data da classe base para ter a navegação
+        context = super(TransactionTypeListView, self).get_context_data(**kwargs)
+        all_month_tx = self.get_queryset()
+
+        # Agrega as SAÍDAS por moeda
+        outflows = all_month_tx.filter(
+            origin_account__isnull=False
+        ).values(
+            'origin_account__country__currency_code', 
+            'origin_account__country__currency_symbol'
+        ).annotate(
+            total_out=Coalesce(Sum('value'), Decimal('0.0'))
+        ).order_by('origin_account__country__currency_code')
+
+        # Agrega as ENTRADAS por moeda
+        inflows = all_month_tx.filter(
+            destination_account__isnull=False
+        ).annotate(
+            # Usa a expressão Case/When que já validamos para somar o valor correto
+            total_in=Coalesce(
+                Sum(
+                    Case(
+                        When(converted_value__isnull=False, then=F('converted_value')),
+                        default=F('value'),
+                        output_field=models.DecimalField()
+                    )
+                ), Decimal('0.0')
+            )
+        ).values(
+            'destination_account__country__currency_code',
+            'destination_account__country__currency_symbol',
+            'total_in'
+        ).order_by('destination_account__country__currency_code')
+        
+        # Não precisamos mais dos totais 'completed' e 'forecasted'
+        # Em vez disso, passamos as novas agregações
+        context['summary'] = {
+            'outflows': list(outflows),
+            'inflows': list(inflows)
+        }
+        
+        context['transaction_type'] = self.transaction_type
+        return context
 
 
 class TransactionByAccountListView(BaseMonthlyListView):
