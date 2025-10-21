@@ -26,6 +26,7 @@ from .forms import (
 )
 from .services import create_installments, create_transfer
 from django.template.loader import render_to_string
+from .forms import CompleteTransferForm
 
 # ==============================================================================
 # VIEW DE AÇÃO SIMPLES
@@ -73,7 +74,6 @@ def complete_transaction_view(request, pk):
     # Redireciona em caso de sucesso
     return refresh_page_or_redirect(request)
 
-
 def refresh_page_or_redirect(request):
     """
     Se o request é do HTMX, retorna uma resposta para forçar o reload da página.
@@ -88,10 +88,54 @@ def refresh_page_or_redirect(request):
     redirect_url = request.META.get('HTTP_REFERER', reverse_lazy('transactions:expense_list'))
     return redirect(redirect_url)
 
+@login_required
+def prepare_complete_transfer_view(request, pk):
+    """
+    Busca os dados para o modal de efetivação de transferência.
+    Retorna o fragmento de HTML do formulário para o HTMX.
+    """
+    transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
+    
+    initial_rate = None
+    error_message = None # Para passar uma mensagem ao template se a API falhar
+
+    # Garante que temos contas para a conversão
+    if transaction.origin_account and transaction.destination_account:
+        origin_currency = transaction.origin_account.country.currency_code
+        dest_currency = transaction.destination_account.country.currency_code
+        
+        if origin_currency != dest_currency:
+            try:
+                raw_rate = get_conversion_rate(origin_currency, dest_currency)
+
+                # --- LÓGICA DE ARREDONDAMENTO APLICADA AQUI ---
+                # Garante que 'raw_rate' seja um Decimal antes de arredondar
+                if raw_rate is not None:
+                    # Decimal('1.000000') define o "quantum" ou o número de casas decimais
+                    six_places = Decimal('1.000000')
+                    # .quantize() é o método para arredondamento preciso
+                    initial_rate = Decimal(raw_rate).quantize(six_places)
+                # --- FIM DO ARREDONDAMENTO ---
+
+            except Exception as e:
+                error_message = f"Could not fetch live exchange rate: {e}"
+                print(error_message)
+
+    # Preenche o formulário com a taxa inicial (ou deixa em branco)
+    form = CompleteTransferForm(initial={'exchange_rate': initial_rate})
+    
+    context = {
+        'transaction': transaction,
+        'form': form,
+        'error_message': error_message
+    }
+    
+    return render(request, 'transactions/partials/complete_transfer_modal_form.html', context)
+
+
 # ==============================================================================
 # VIEWS DE CRIAÇÃO
 # ==============================================================================
-
 class TransactionCreateMixin(LoginRequiredMixin):
     """Mixin para lidar com a lógica de criação de transação única vs. parcelada."""
     model = Transaction
@@ -197,8 +241,6 @@ class TransferCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
 # Nova View para a página de confirmação
-from .forms import CompleteTransferForm
-
 class ConfirmTransferRateView(LoginRequiredMixin, FormView):
     form_class = CompleteTransferForm
     template_name = 'transactions/transfer_confirm_rate.html'
@@ -258,10 +300,10 @@ class ConfirmTransferRateView(LoginRequiredMixin, FormView):
         
         messages.success(self.request, "Transfer created and completed successfully with custom rate.")
         return super().form_valid(form)
+
 # ==============================================================================
 # VIEWS DE LISTAGEM
 # ==============================================================================
-
 class BaseMonthlyListView(LoginRequiredMixin, ListView):
     """
     Classe base que define o comportamento comum para todas as listagens mensais:
@@ -347,7 +389,6 @@ class TransactionTypeListView(BaseMonthlyListView):
         context['transaction_type'] = self.transaction_type
         context['summary'] = summary_data
         return context
-
 
 # As classes filhas agora são extremamente simples
 class IncomeListView(TransactionTypeListView):
@@ -461,10 +502,11 @@ class TransactionByAccountListView(BaseMonthlyListView):
             'forecasted_balance': forecasted_balance
         }
         return context
+
+
 # ==============================================================================
 # VIEWS DE CATEGORIA (CRUD)
 # ==============================================================================
-
 class CategoryListView(LoginRequiredMixin, ListView):
     model = Category
     template_name = 'transactions/category_list.html'
@@ -508,46 +550,3 @@ class CategoryDeleteView(LoginRequiredMixin, DeleteView):
         messages.warning(self.request, "Category deleted successfully.")
         return super().form_valid(form)
     
-@login_required
-def prepare_complete_transfer_view(request, pk):
-    """
-    Busca os dados para o modal de efetivação de transferência.
-    Retorna o fragmento de HTML do formulário para o HTMX.
-    """
-    transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
-    
-    initial_rate = None
-    error_message = None # Para passar uma mensagem ao template se a API falhar
-
-    # Garante que temos contas para a conversão
-    if transaction.origin_account and transaction.destination_account:
-        origin_currency = transaction.origin_account.country.currency_code
-        dest_currency = transaction.destination_account.country.currency_code
-        
-        if origin_currency != dest_currency:
-            try:
-                raw_rate = get_conversion_rate(origin_currency, dest_currency)
-
-                # --- LÓGICA DE ARREDONDAMENTO APLICADA AQUI ---
-                # Garante que 'raw_rate' seja um Decimal antes de arredondar
-                if raw_rate is not None:
-                    # Decimal('1.000000') define o "quantum" ou o número de casas decimais
-                    six_places = Decimal('1.000000')
-                    # .quantize() é o método para arredondamento preciso
-                    initial_rate = Decimal(raw_rate).quantize(six_places)
-                # --- FIM DO ARREDONDAMENTO ---
-
-            except Exception as e:
-                error_message = f"Could not fetch live exchange rate: {e}"
-                print(error_message)
-
-    # Preenche o formulário com a taxa inicial (ou deixa em branco)
-    form = CompleteTransferForm(initial={'exchange_rate': initial_rate})
-    
-    context = {
-        'transaction': transaction,
-        'form': form,
-        'error_message': error_message
-    }
-    
-    return render(request, 'transactions/partials/complete_transfer_modal_form.html', context)
