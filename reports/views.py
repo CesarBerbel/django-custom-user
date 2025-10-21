@@ -11,6 +11,8 @@ from dateutil.relativedelta import relativedelta
 from django.db.models import Sum, Q, F
 from users.models import UserPreferences
 from transactions.models import Transaction
+from django.shortcuts import get_object_or_404
+from accounts.models import Account
 
 class MonthlyReportRedirectView(LoginRequiredMixin, RedirectView):
     """Redireciona /reports/ para o relatório do mês atual."""
@@ -27,31 +29,39 @@ class MonthlyReportView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
-        
-        # 1. Determina as datas do relatório (já existente)
+
+        # 1. Datas e Navegação
         year = self.kwargs.get('year')
         month = self.kwargs.get('month')
         report_date = datetime.date(year, month, 1)
         start_of_month = report_date
         end_of_month = (start_of_month + relativedelta(months=1)) - relativedelta(days=1)
+        context.update({
+            'current_month': report_date,
+            'previous_month': report_date - relativedelta(months=1),
+            'next_month': report_date + relativedelta(months=1),
+        })
+        
+        # 2. Lógica do Filtro de Conta
+        account_id = self.kwargs.get('account_id')
+        selected_account = None
+        all_accounts = Account.objects.filter(owner=user, active=True)
+        if account_id:
+            selected_account = get_object_or_404(all_accounts, pk=account_id)
+        context.update({
+            'all_accounts': all_accounts,
+            'selected_account': selected_account
+        })
 
-        # 2. Prepara o contexto de navegação (já existente)
-        context['current_month'] = report_date
-        context['previous_month'] = report_date - relativedelta(months=1)
-        context['next_month'] = report_date + relativedelta(months=1)
-
-        # 3. Adiciona a moeda preferida para formatar os totais
-        user_prefs, _ = UserPreferences.objects.get_or_create(user=user)
-        context['preferred_currency'] = user_prefs.preferred_currency
-
-        # --- NOVA LÓGICA DE CÁLCULO DE FLUXO DE CAIXA ---
-
-        # Query base para o regime de "caixa" do mês selecionado
-        transactions_in_month_q = Q(
+        # 3. Query Base de Transações
+        transactions_q = Q(owner=user) & (
             Q(status=Transaction.Status.COMPLETED, completion_date__range=[start_of_month, end_of_month]) |
             Q(status__in=[Transaction.Status.PENDING, Transaction.Status.OVERDUE], date__range=[start_of_month, end_of_month])
         )
-        transactions = Transaction.objects.filter(owner=user).filter(transactions_in_month_q)
+        if selected_account:
+            transactions_q &= Q(Q(origin_account=selected_account) | Q(destination_account=selected_account))
+            
+        transactions = Transaction.objects.filter(transactions_q).distinct()
 
         # 4. Agrega os totais
         # Nota: Estes cálculos ainda não fazem conversão de moeda, assumindo
