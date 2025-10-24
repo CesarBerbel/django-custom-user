@@ -1,5 +1,6 @@
-<!-- templates/transactions/transaction_confirm_delete.html -->
 {% extends "base.html" %}
+{% load crispy_forms_tags %}
+
 {% block title %}Confirm Delete{% endblock %}
 {% block header %}Delete Transaction{% endblock %}
 
@@ -9,22 +10,26 @@
     <div class="alert alert-danger">
       <h5><i class="bi bi-exclamation-triangle-fill"></i> Are you sure?</h5>
       <p>
-        You are about to permanently delete the transaction:
+        You are about to delete the transaction:
         <br>
-        <strong>"{{ object.description }}"</strong> ({{ object.value }}) on {{ object.date|date:"Y-m-d" }}.
-      </p>
-      <p class="mb-0">
-        If this transaction was already completed, the account balance will be reverted. 
-        This action cannot be undone.
+        <strong>"{{ transaction.description }}"</strong> ({{ transaction.value }}) on {{ transaction.date|date:"Y-m-d" }}.
       </p>
     </div>
+
     <form method="post">
       {% csrf_token %}
-      <!-- Campo oculto que guarda a URL de retorno -->
       <input type="hidden" name="next" value="{{ request.GET.next }}">
       
-      <button type="submit" class="btn btn-danger">Yes, I am sure, delete it</button>
-      <a href="{{ request.GET.next }}" class="btn btn-outline-secondary">Cancel</a>
+      <!-- EXIBIÇÃO CONDICIONAL DAS OPÇÕES -->
+      {% if transaction.recurring_transaction %}
+        <div class="mb-3">
+            <p>This transaction is part of a recurring series. How would you like to delete it?</p>
+            {{ form }}
+        </div>
+      {% endif %}
+
+      <button type="submit" class="btn btn-danger">Confirm Deletion</button>
+      <a href="{{ request.GET.next|default:request.META.HTTP_REFERER }}" class="btn btn-outline-secondary">Cancel</a>
     </form>
   </div>
 </div>

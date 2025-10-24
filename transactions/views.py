@@ -22,7 +22,7 @@ from users.models import UserPreferences
 from .models import Transaction, Category
 from .forms import (
     IncomeForm, ExpenseForm, TransferForm, 
-    CategoryForm, CompleteTransferForm
+    CategoryForm, CompleteTransferForm, DeleteRecurringForm
 )
 from .services import create_installments, create_transfer
 from django.template.loader import render_to_string
@@ -559,36 +559,55 @@ class TransactionByAccountListView(BaseMonthlyListView):
 # VIEWS DE EXCLUSÃO (CRUD)
 # ==============================================================================
 # --- NOVA VIEW DE EXCLUSÃO ---
-class TransactionDeleteView(LoginRequiredMixin, DeleteView):
-    model = Transaction
-    template_name = 'transactions/transaction_confirm_delete.html'
+@login_required
+def transaction_delete_view(request, pk):
+    transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
+    is_recurring = transaction.recurring_transaction is not None
     
-    def get_queryset(self):
-        return Transaction.objects.filter(owner=self.request.user)
-            
-    def form_valid(self, form):
-        transaction_desc = self.object.description
-        response = super().form_valid(form)
-        messages.warning(self.request, f"Transaction '{transaction_desc}' has been deleted.")
-        return response
-    
-    # --- MÉTODO DE REDIRECIONAMENTO INTELIGENTE ---
-    def get_success_url(self):
-        """
-        Redireciona para a URL 'next' se ela existir e for segura.
-        Caso contrário, redireciona para um fallback seguro.
-        """
-        # A URL 'next' virá do POST (enviado pelo action do form)
-        next_url = self.request.POST.get('next', '')
+    # Processa o formulário apenas se a requisição for POST
+    if request.method == 'POST':
+        qs_to_delete = Transaction.objects.none()
+
+        # CASO 1: É UMA TRANSAÇÃO RECORRENTE
+        if is_recurring:
+            form = DeleteRecurringForm(request.POST)
+            if form.is_valid():
+                option = form.cleaned_data['delete_option'] # Nome do campo no form
+
+                if option == 'one':
+                    qs_to_delete = Transaction.objects.filter(pk=transaction.pk)
+                elif option == 'forward':
+                    qs_to_delete = transaction.recurring_transaction.instances.filter(date__gte=transaction.date)
+                elif option == 'all':
+                    qs_to_delete = transaction.recurring_transaction.instances.all()
+            else:
+                # Se o form for inválido, não delete nada e mostre o erro
+                messages.error(request, "Invalid option selected.")
+                return redirect(request.path) # Redireciona para a mesma página
+
+        # CASO 2: É UMA TRANSAÇÃO NORMAL (NÃO RECORRENTE)
+        else:
+            qs_to_delete = Transaction.objects.filter(pk=transaction.pk)
         
-        # Aqui, poderíamos adicionar uma validação de segurança para garantir
-        # que o 'next_url' é um caminho local e seguro, mas por enquanto,
-        # vamos confiar que só geramos URLs seguras.
-        if next_url:
-            return next_url
-            
-        # Fallback caso 'next' não esteja presente
-        return reverse_lazy('transactions:expense_list')
+        # Lógica de exclusão unificada
+        count = qs_to_delete.count()
+        if count > 0:
+            for tx in qs_to_delete:
+                tx.delete() # Chama o método .delete() customizado
+            messages.warning(request, f"{count} transaction(s) have been deleted.")
+        
+        # Redireciona para a URL 'next'
+        next_url = request.POST.get('next', reverse_lazy('transactions:expense_list'))
+        return redirect(next_url)
+
+    # Lógica do GET (exibir a confirmação) - permanece a mesma
+    else:
+        form = DeleteRecurringForm() if is_recurring else None
+        context = {
+            'transaction': transaction,
+            'form': form,
+        }
+        return render(request, 'transactions/transaction_confirm_delete.html', context)
 
 
 # ==============================================================================

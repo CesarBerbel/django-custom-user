@@ -22,7 +22,7 @@ urlpatterns = [
     
     # NOVAS URLs PARA EDITAR E DELETAR
     # path('<int:pk>/edit/', views.TransactionUpdateView.as_view(), name='edit'), # Deixaremos para o próximo passo
-    path('<int:pk>/delete/', views.TransactionDeleteView.as_view(), name='delete'),
+    path('<int:pk>/delete/', views.transaction_delete_view, name='delete'),
     
     # NOVA URL para obter os dados e renderizar o modal (via HTMX ou AJAX)
     path('<int:pk>/prepare-complete/', views.prepare_complete_transfer_view, name='prepare_complete_transfer'),
