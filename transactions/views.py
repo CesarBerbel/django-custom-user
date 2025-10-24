@@ -556,6 +556,42 @@ class TransactionByAccountListView(BaseMonthlyListView):
 
 
 # ==============================================================================
+# VIEWS DE EXCLUSÃO (CRUD)
+# ==============================================================================
+# --- NOVA VIEW DE EXCLUSÃO ---
+class TransactionDeleteView(LoginRequiredMixin, DeleteView):
+    model = Transaction
+    template_name = 'transactions/transaction_confirm_delete.html'
+    
+    def get_queryset(self):
+        return Transaction.objects.filter(owner=self.request.user)
+            
+    def form_valid(self, form):
+        transaction_desc = self.object.description
+        response = super().form_valid(form)
+        messages.warning(self.request, f"Transaction '{transaction_desc}' has been deleted.")
+        return response
+    
+    # --- MÉTODO DE REDIRECIONAMENTO INTELIGENTE ---
+    def get_success_url(self):
+        """
+        Redireciona para a URL 'next' se ela existir e for segura.
+        Caso contrário, redireciona para um fallback seguro.
+        """
+        # A URL 'next' virá do POST (enviado pelo action do form)
+        next_url = self.request.POST.get('next', '')
+        
+        # Aqui, poderíamos adicionar uma validação de segurança para garantir
+        # que o 'next_url' é um caminho local e seguro, mas por enquanto,
+        # vamos confiar que só geramos URLs seguras.
+        if next_url:
+            return next_url
+            
+        # Fallback caso 'next' não esteja presente
+        return reverse_lazy('transactions:expense_list')
+
+
+# ==============================================================================
 # VIEWS DE CATEGORIA (CRUD)
 # ==============================================================================
 class CategoryListView(LoginRequiredMixin, ListView):

@@ -256,9 +256,15 @@
                                       </button>
                                   </form>
                               {% endif %}
-                          {% else %}
-                              -
                           {% endif %}
+                          <!-- O botão de Editar fica desabilitado por enquanto -->
+                          <button class="btn btn-sm btn-outline-primary" disabled title="Edit (coming soon)">
+                              <i class="bi bi-pencil"></i>
+                          </button>
+                          
+                          <a href="{% url 'transactions:delete' tx.pk %}?next={{ request.path }}" class="btn btn-sm btn-outline-danger" title="Delete Transaction">
+                              <i class="bi bi-trash"></i>
+                          </a>
                         </td>
                     </tr>
                     {% empty %}
