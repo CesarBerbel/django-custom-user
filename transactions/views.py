@@ -22,7 +22,7 @@ from users.models import UserPreferences
 from .models import Transaction, Category
 from .forms import (
     IncomeForm, ExpenseForm, TransferForm, 
-    CategoryForm, CompleteTransferForm
+    CategoryForm, CompleteTransferForm, DeleteRecurringForm
 )
 from .services import create_installments, create_transfer
 from django.template.loader import render_to_string
@@ -554,6 +554,123 @@ class TransactionByAccountListView(BaseMonthlyListView):
         }
         return context
 
+
+# ==============================================================================
+# VIEWS DE EXCLUSÃO (CRUD)
+# ==============================================================================
+# --- NOVA VIEW DE EXCLUSÃO ---
+@login_required
+def transaction_delete_view(request, pk):
+    transaction = get_object_or_404(Transaction, pk=pk, owner=request.user)
+    is_recurring = transaction.recurring_transaction is not None
+    
+    # Processa o formulário apenas se a requisição for POST
+    if request.method == 'POST':
+        qs_to_delete = Transaction.objects.none()
+
+        # CASO 1: É UMA TRANSAÇÃO RECORRENTE
+        if is_recurring:
+            form = DeleteRecurringForm(request.POST)
+            if form.is_valid():
+                option = form.cleaned_data['delete_option'] # Nome do campo no form
+
+                if option == 'one':
+                    qs_to_delete = Transaction.objects.filter(pk=transaction.pk)
+                elif option == 'forward':
+                    qs_to_delete = transaction.recurring_transaction.instances.filter(date__gte=transaction.date)
+                elif option == 'all':
+                    qs_to_delete = transaction.recurring_transaction.instances.all()
+            else:
+                # Se o form for inválido, não delete nada e mostre o erro
+                messages.error(request, "Invalid option selected.")
+                return redirect(request.path) # Redireciona para a mesma página
+
+        # CASO 2: É UMA TRANSAÇÃO NORMAL (NÃO RECORRENTE)
+        else:
+            qs_to_delete = Transaction.objects.filter(pk=transaction.pk)
+        
+        # Lógica de exclusão unificada
+        count = qs_to_delete.count()
+        if count > 0:
+            for tx in qs_to_delete:
+                tx.delete() # Chama o método .delete() customizado
+            messages.warning(request, f"{count} transaction(s) have been deleted.")
+        
+        # Redireciona para a URL 'next'
+        next_url = request.POST.get('next', reverse_lazy('transactions:expense_list'))
+        return redirect(next_url)
+
+    # Lógica do GET (exibir a confirmação) - permanece a mesma
+    else:
+        form = DeleteRecurringForm() if is_recurring else None
+        context = {
+            'transaction': transaction,
+            'form': form,
+        }
+        return render(request, 'transactions/transaction_confirm_delete.html', context)
+
+class TransactionUpdateView(LoginRequiredMixin, UpdateView):
+    """
+    Lida com a atualização de uma transação ÚNICA.
+    """
+    model = Transaction
+    template_name = 'transactions/transaction_form.html'
+    
+    def get_queryset(self):
+        """ Garante que o usuário só pode editar suas próprias transações. """
+        return Transaction.objects.filter(owner=self.request.user)
+
+    def dispatch(self, request, *args, **kwargs):
+        """
+        Intercepta a requisição para verificar se a transação é recorrente
+        antes de prosseguir.
+        """
+        transaction = self.get_object()
+        
+        if transaction.recurring_transaction is not None:
+            # Se for recorrente, impede o acesso e mostra uma mensagem.
+            messages.error(self.request, 
+                "Editing recurring transactions is not supported. "
+                "Please delete the series and create a new one if you need to make changes."
+            )
+            # Redireciona de volta para a lista
+            return redirect(self.request.GET.get('next', reverse_lazy('transactions:expense_list')))
+            
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_class(self):
+        """ Carrega o formulário correto (Income, Expense, Transfer) com base no tipo. """
+        # 'self.object' é disponibilizado pelo `get_object()` no dispatch()
+        transaction_type = self.object.type
+        if transaction_type == Transaction.TransactionType.INCOME:
+            return IncomeForm
+        elif transaction_type == Transaction.TransactionType.EXPENSE:
+            return ExpenseForm
+        elif transaction_type == Transaction.TransactionType.TRANSFER:
+            return TransferForm
+        return None
+
+    def get_form_kwargs(self):
+        """ Passa o usuário para o __init__ do formulário. """
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        """ Adiciona a URL 'cancel' para o template. """
+        context = super().get_context_data(**kwargs)
+        context['cancel_url'] = self.request.GET.get('next', reverse_lazy('transactions:expense_list'))
+        return context
+
+    def get_success_url(self):
+        """ Redireciona o usuário para a URL de onde ele veio. """
+        return self.request.GET.get('next', reverse_lazy('transactions:expense_list'))
+    
+    def form_valid(self, form):
+        messages.success(self.request, "Transaction updated successfully.")
+        # O método .save() do modelo Transaction cuidará de reverter o saldo
+        # antigo e aplicar o novo, se o valor, conta ou status mudarem.
+        return super().form_valid(form)
 
 # ==============================================================================
 # VIEWS DE CATEGORIA (CRUD)

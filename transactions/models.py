@@ -136,30 +136,26 @@ class Transaction(models.Model):
         return False
 
     def save(self, *args, **kwargs):
-        is_new = self._state.adding
-        old_status = None
         old_instance = None
-        if not is_new:
-            old_instance = Transaction.objects.get(pk=self.pk)
-            old_status = old_instance.status
-
-        status_is_now_completed = self.status == self.Status.COMPLETED
-        status_was_completed = old_status == self.Status.COMPLETED
+        if not self._state.adding:
+            old_instance = Transaction.objects.select_related('origin_account', 'destination_account').get(pk=self.pk)
         
-        status_changed_to_completed = status_is_now_completed and not status_was_completed
-        status_reverted_from_completed = not status_is_now_completed and status_was_completed
-
-        if status_is_now_completed and self.completion_date is None:
+        # Define/limpa completion_date
+        if self.status == self.Status.COMPLETED and self.completion_date is None:
             self.completion_date = timezone.now().date()
-        elif status_reverted_from_completed:
+        elif self.status != self.Status.COMPLETED:
             self.completion_date = None
         
+        # 1. Se um estado antigo existe e ele estava completado, REVERTA-O
+        if old_instance and old_instance.status == self.Status.COMPLETED:
+            self._reverse_balance_changes(old_instance)
+            
+        # 2. Salva o novo estado da transação no banco de dados
         super().save(*args, **kwargs)
 
-        if status_changed_to_completed:
+        # 3. Se o novo estado é completado, APLIQUE-O
+        if self.status == self.Status.COMPLETED:
             self._process_balance_changes()
-        elif status_reverted_from_completed and old_instance:
-            self._reverse_balance_changes(old_instance)
 
     def delete(self, *args, **kwargs):
         """

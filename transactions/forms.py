@@ -306,3 +306,21 @@ class CompleteTransferForm(forms.Form):
             FloatingField('exchange_rate'),
             # O botão de submit será parte do modal, não do crispy
         )        
+
+class DeleteRecurringForm(forms.Form):
+    """
+    Formulário para as opções de exclusão de uma transação recorrente.
+    """
+    DELETE_CHOICES = [
+        ('one', 'Delete only this instance'),
+        ('forward', 'Delete this and all future instances'),
+        ('all', 'Delete all instances in the series'),
+    ]
+
+    delete_option = forms.ChoiceField(
+        choices=DELETE_CHOICES,
+        widget=forms.RadioSelect,
+        initial='one'
+    )
+
+    

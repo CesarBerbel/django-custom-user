@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Confirm Delete{% endblock %}
+{% block header %}Delete Transaction{% endblock %}
+
+{% block content %}
+<div class="card mx-auto" style="max-width: 600px;">
+  <div class="card-body">
+    <div class="alert alert-danger">
+      <h5><i class="bi bi-exclamation-triangle-fill"></i> Are you sure?</h5>
+      <p>
+        You are about to delete the transaction:
+        <br>
+        <strong>"{{ transaction.description }}"</strong> ({{ transaction.value }}) on {{ transaction.date|date:"Y-m-d" }}.
+      </p>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.GET.next }}">
+      
+      <!-- EXIBIÇÃO CONDICIONAL DAS OPÇÕES -->
+      {% if transaction.recurring_transaction %}
+        <div class="mb-3">
+            <p>This transaction is part of a recurring series. How would you like to delete it?</p>
+            {{ form }}
+        </div>
+      {% endif %}
+
+      <button type="submit" class="btn btn-danger">Confirm Deletion</button>
+      <a href="{{ request.GET.next|default:request.META.HTTP_REFERER }}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
