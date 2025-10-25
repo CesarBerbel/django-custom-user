@@ -609,6 +609,68 @@ def transaction_delete_view(request, pk):
         }
         return render(request, 'transactions/transaction_confirm_delete.html', context)
 
+class TransactionUpdateView(LoginRequiredMixin, UpdateView):
+    """
+    Lida com a atualização de uma transação ÚNICA.
+    """
+    model = Transaction
+    template_name = 'transactions/transaction_form.html'
+    
+    def get_queryset(self):
+        """ Garante que o usuário só pode editar suas próprias transações. """
+        return Transaction.objects.filter(owner=self.request.user)
+
+    def dispatch(self, request, *args, **kwargs):
+        """
+        Intercepta a requisição para verificar se a transação é recorrente
+        antes de prosseguir.
+        """
+        transaction = self.get_object()
+        
+        if transaction.recurring_transaction is not None:
+            # Se for recorrente, impede o acesso e mostra uma mensagem.
+            messages.error(self.request, 
+                "Editing recurring transactions is not supported. "
+                "Please delete the series and create a new one if you need to make changes."
+            )
+            # Redireciona de volta para a lista
+            return redirect(self.request.GET.get('next', reverse_lazy('transactions:expense_list')))
+            
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_class(self):
+        """ Carrega o formulário correto (Income, Expense, Transfer) com base no tipo. """
+        # 'self.object' é disponibilizado pelo `get_object()` no dispatch()
+        transaction_type = self.object.type
+        if transaction_type == Transaction.TransactionType.INCOME:
+            return IncomeForm
+        elif transaction_type == Transaction.TransactionType.EXPENSE:
+            return ExpenseForm
+        elif transaction_type == Transaction.TransactionType.TRANSFER:
+            return TransferForm
+        return None
+
+    def get_form_kwargs(self):
+        """ Passa o usuário para o __init__ do formulário. """
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        """ Adiciona a URL 'cancel' para o template. """
+        context = super().get_context_data(**kwargs)
+        context['cancel_url'] = self.request.GET.get('next', reverse_lazy('transactions:expense_list'))
+        return context
+
+    def get_success_url(self):
+        """ Redireciona o usuário para a URL de onde ele veio. """
+        return self.request.GET.get('next', reverse_lazy('transactions:expense_list'))
+    
+    def form_valid(self, form):
+        messages.success(self.request, "Transaction updated successfully.")
+        # O método .save() do modelo Transaction cuidará de reverter o saldo
+        # antigo e aplicar o novo, se o valor, conta ou status mudarem.
+        return super().form_valid(form)
 
 # ==============================================================================
 # VIEWS DE CATEGORIA (CRUD)

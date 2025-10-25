@@ -1,10 +1,10 @@
-#
-# Arquivo: transactions/tests.py
-#
+# #
+# # Arquivo: transactions/tests.py
+# #
 import datetime
 from decimal import Decimal
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.contrib.auth import get_user_model
 from accounts.models import Account, Bank, AccountType, Country
 from .models import Transaction, Category, RecurringTransaction
@@ -793,3 +793,142 @@ class TransferCreationFlowTests(TestCase):
         self.assertEqual(tx.value, Decimal('1000'))
         self.assertEqual(tx.exchange_rate, Decimal('0.185'))
         self.assertEqual(tx.converted_value, Decimal('185.00')) # 1000 * 0.185
+
+class TransactionEditDeleteTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(email="crud@test.com", password="pw")
+        self.client.force_login(self.user)
+        
+        country = Country.objects.create(code="XX", currency_code="XXX")
+        bank = Bank.objects.create(name="CRUD Bank")
+        acc_type = AccountType.objects.create(name="Standard")
+        self.account1 = Account.objects.create(owner=self.user, country=country, bank=bank, type=acc_type, initial_balance=1000)
+        self.account2 = Account.objects.create(owner=self.user, country=country, bank=bank, type=acc_type, initial_balance=2000)
+        self.exp_category = Category.objects.create(owner=self.user, name="Bills", type=Category.TransactionType.EXPENSE)
+        
+        # Cria uma transação para ser manipulada nos testes
+        self.tx = Transaction.objects.create(
+            owner=self.user,
+            origin_account=self.account1,
+            category=self.exp_category,
+            value=Decimal("50.00"),
+            description="Initial Bill",
+            type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.PENDING,
+            date=timezone.now().date()
+        )
+        self.initial_balance = self.account1.balance
+
+    def test_delete_pending_transaction(self):
+        """Testa se deletar uma transação pendente não afeta o saldo."""
+        self.tx.delete()
+        self.account1.refresh_from_db()
+        
+        self.assertFalse(Transaction.objects.filter(pk=self.tx.pk).exists())
+        self.assertEqual(self.account1.balance, self.initial_balance) # Não deve mudar
+
+    def test_delete_completed_transaction_reverts_balance(self):
+        """Testa se deletar uma transação completada reverte o saldo."""
+        # Completa a transação primeiro
+        self.tx.complete()
+        self.account1.refresh_from_db()
+        self.assertEqual(self.account1.balance, self.initial_balance - self.tx.value) # Saldo deve diminuir
+        
+        # Deleta
+        self.tx.delete()
+        self.account1.refresh_from_db()
+        
+        self.assertFalse(Transaction.objects.filter(pk=self.tx.pk).exists())
+        self.assertEqual(self.account1.balance, self.initial_balance) # Saldo deve voltar ao normal
+
+    def test_update_single_transaction_value(self):
+        """Testa se editar o valor de uma transação única (já completada) corrige o saldo."""
+        self.tx.complete() # Completa a despesa de 50, saldo da conta = 950
+        self.account1.refresh_from_db()
+        
+        url = reverse('transactions:edit', args=[self.tx.pk])
+        
+        # Simula a edição: muda o valor de 50 para 75
+        post_data = {
+            'value': '75.00',
+            'description': self.tx.description,
+            'date': self.tx.date.strftime('%Y-%m-%d'),
+            'origin_account': self.account1.pk,
+            'category': self.exp_category.pk,
+            'status': Transaction.Status.COMPLETED
+        }
+        
+        self.client.post(url, post_data)
+        self.account1.refresh_from_db()
+
+        # O saldo final deve ser: 1000 - 75 = 925
+        expected_balance = self.initial_balance - Decimal("75.00")
+        self.assertEqual(self.account1.balance, expected_balance)
+
+    def test_update_transaction_from_pending_to_completed(self):
+        """Testa se editar uma transação e mudar o status para COMPLETED atualiza o saldo."""
+        url = reverse('transactions:edit', args=[self.tx.pk])
+        
+        post_data = {
+            'value': self.tx.value,
+            'description': 'Updated Bill',
+            'date': self.tx.date.strftime('%Y-%m-%d'),
+            'origin_account': self.account1.pk,
+            'category': self.exp_category.pk,
+            'status': Transaction.Status.COMPLETED # Muda o status
+        }
+
+        self.client.post(url, post_data)
+        self.account1.refresh_from_db()
+        
+        expected_balance = self.initial_balance - self.tx.value
+        self.assertEqual(self.account1.balance, expected_balance)
+
+    def test_update_transaction_change_account(self):
+        """Testa se editar uma transação e mudar a conta corrige os saldos de AMBAS as contas."""
+        self.tx.complete() # Completa a despesa de 50 na conta 1. Saldo C1=950, C2=2000
+        self.account1.refresh_from_db()
+        account2_initial_balance = self.account2.balance
+        
+        url = reverse('transactions:edit', args=[self.tx.pk])
+
+        # Edita a transação, movendo-a da conta 1 para a conta 2
+        post_data = {
+            'value': self.tx.value,
+            'description': self.tx.description,
+            'date': self.tx.date.strftime('%Y-%m-%d'),
+            'origin_account': self.account2.pk, # <--- MUDA A CONTA
+            'category': self.exp_category.pk,
+            'status': Transaction.Status.COMPLETED
+        }
+        
+        self.client.post(url, post_data)
+        self.account1.refresh_from_db()
+        self.account2.refresh_from_db()
+        
+        # Saldo da conta 1 deve voltar ao original (reversão)
+        self.assertEqual(self.account1.balance, self.initial_balance)
+        
+        # Saldo da conta 2 deve ser debitado (aplicação)
+        self.assertEqual(self.account2.balance, account2_initial_balance - self.tx.value)
+
+    def test_cannot_edit_recurring_transaction(self):
+        """Testa se a edição de uma transação recorrente é bloqueada."""
+        rec_tx = RecurringTransaction.objects.create(
+            owner=self.user,
+            start_date=timezone.now().date(),
+            frequency='MONTHLY',
+            installments_total=2,
+            value=10,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+        )
+        self.tx.recurring_transaction = rec_tx
+        self.tx.save()
+
+        url = reverse('transactions:edit', args=[self.tx.pk])
+        response = self.client.get(url, follow=True)
+        
+        # A view deve redirecionar e mostrar uma mensagem de erro
+        self.assertRedirects(response, reverse_lazy('transactions:expense_list'))
+        self.assertContains(response, "Editing recurring transactions is not supported.")

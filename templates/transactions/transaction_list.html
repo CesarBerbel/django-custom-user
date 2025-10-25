@@ -258,9 +258,9 @@
                               {% endif %}
                           {% endif %}
                           <!-- O botão de Editar fica desabilitado por enquanto -->
-                          <button class="btn btn-sm btn-outline-primary" disabled title="Edit (coming soon)">
+                          <a href="{% url 'transactions:edit' tx.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-primary" title="Edit Transaction">
                               <i class="bi bi-pencil"></i>
-                          </button>
+                          </a>
                           
                           <a href="{% url 'transactions:delete' tx.pk %}?next={{ request.path }}" class="btn btn-sm btn-outline-danger" title="Delete Transaction">
                               <i class="bi bi-trash"></i>
