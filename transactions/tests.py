@@ -14,6 +14,10 @@ from dateutil.relativedelta import relativedelta
 from django.core.management import call_command
 from unittest.mock import patch, MagicMock
 from .services import create_transfer
+from .services import (
+    get_balance_update_strategy, CompletionStrategy, 
+    ReversalStrategy, UpdateCompletedStrategy, NullStrategy
+)
 
 class TransactionModelTests(TestCase):
     def setUp(self):
@@ -932,3 +936,122 @@ class TransactionEditDeleteTests(TestCase):
         # A view deve redirecionar e mostrar uma mensagem de erro
         self.assertRedirects(response, reverse_lazy('transactions:expense_list'))
         self.assertContains(response, "Editing recurring transactions is not supported.")
+
+# --- NOVA CLASSE DE TESTE PARA O STRATEGY PATTERN ---
+class BalanceUpdateStrategyTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="strategy@test.com", password="pw")
+        
+        country = Country.objects.create(code="ST", currency_code="STR")
+        bank = Bank.objects.create(name="Strategy Bank")
+        acc_type = AccountType.objects.create(name="Digital")
+        
+        self.account = Account.objects.create(owner=user, country=country, bank=bank, type=acc_type, initial_balance=1000)
+
+        # Transação base (estado antigo) no banco de dados
+        self.base_tx = Transaction.objects.create(
+            owner=user,
+            origin_account=self.account,
+            value=Decimal("100.00"),
+            type=Transaction.TransactionType.EXPENSE,
+            status=Transaction.Status.PENDING
+        )
+
+    def test_factory_selects_completion_strategy(self):
+        """
+        Cenário: Mudar de PENDING para COMPLETED.
+        A factory deve retornar a CompletionStrategy.
+        """
+        # Pega a transação do BD (estado antigo)
+        old_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        
+        # Cria a instância modificada em memória (estado novo)
+        new_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance.status = Transaction.Status.COMPLETED
+
+        # Chama a factory
+        strategy = get_balance_update_strategy(new_instance, old_instance)
+        
+        # Verifica se a estratégia correta foi escolhida
+        self.assertIsInstance(strategy, CompletionStrategy)
+
+    def test_factory_selects_reversal_strategy(self):
+        """
+        Cenário: Mudar de COMPLETED para PENDING.
+        A factory deve retornar a ReversalStrategy.
+        """
+        # Modifica a transação base para já estar completada
+        self.base_tx.status = Transaction.Status.COMPLETED
+        self.base_tx.save()
+        
+        old_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance.status = Transaction.Status.PENDING
+        
+        strategy = get_balance_update_strategy(new_instance, old_instance)
+        
+        self.assertIsInstance(strategy, ReversalStrategy)
+
+    def test_factory_selects_update_completed_strategy(self):
+        """
+        Cenário: Manter COMPLETED, mas mudar o valor.
+        A factory deve retornar a UpdateCompletedStrategy.
+        """
+        self.base_tx.status = Transaction.Status.COMPLETED
+        self.base_tx.save()
+        
+        old_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance.value = Decimal("200.00") # Muda o valor
+        
+        strategy = get_balance_update_strategy(new_instance, old_instance)
+
+        self.assertIsInstance(strategy, UpdateCompletedStrategy)
+
+    def test_factory_selects_null_strategy_for_no_change(self):
+        """
+        Cenário: Manter COMPLETED, sem mudar nada relevante.
+        A factory deve retornar a NullStrategy.
+        """
+        self.base_tx.status = Transaction.Status.COMPLETED
+        self.base_tx.save()
+
+        old_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        # Nenhuma mudança relevante, apenas na descrição, por exemplo
+        new_instance.description = "Updated description"
+
+        strategy = get_balance_update_strategy(new_instance, old_instance)
+        
+        self.assertIsInstance(strategy, NullStrategy)
+
+    def test_factory_selects_null_strategy_for_other_changes(self):
+        """
+
+        Cenário: Mudar de PENDING para OVERDUE.
+        A factory deve retornar a NullStrategy, pois não afeta o saldo.
+        """
+        old_instance = Transaction.objects.get(pk=self.base_tx.pk) # Está PENDING
+        new_instance = Transaction.objects.get(pk=self.base_tx.pk)
+        new_instance.status = Transaction.Status.OVERDUE
+        
+        strategy = get_balance_update_strategy(new_instance, old_instance)
+        
+        self.assertIsInstance(strategy, NullStrategy)
+
+    def test_factory_selects_completion_strategy_on_creation(self):
+        """
+
+        Cenário: Criar uma transação que já nasce COMPLETED.
+        A factory deve retornar a CompletionStrategy.
+        """
+        new_instance = Transaction(
+            owner=self.base_tx.owner,
+            status=Transaction.Status.COMPLETED
+        )
+        old_instance = None # Representa uma nova instância (is_new = True)
+        
+        strategy = get_balance_update_strategy(new_instance, old_instance)
+        
+        self.assertIsInstance(strategy, CompletionStrategy)

@@ -176,3 +176,67 @@ def create_transfer(*, user, request: HttpRequest, form_data: dict) -> Transacti
     transaction.save()
     
     return transaction
+
+# Interface Comum (Opcional, mas boa prática)
+class BalanceUpdateStrategy:
+    def __init__(self, transaction: Transaction, old_instance: Transaction | None = None):
+        self.transaction = transaction
+        self.old_instance = old_instance
+
+    def execute(self):
+        raise NotImplementedError
+
+# Estratégia 1: Processar a efetivação
+class CompletionStrategy(BalanceUpdateStrategy):
+    def execute(self):
+        """Aplica o impacto da transação no saldo."""
+        self.transaction._process_balance_changes()
+
+# Estratégia 2: Reverter a efetivação
+class ReversalStrategy(BalanceUpdateStrategy):
+    def execute(self):
+        """Reverte o impacto da transação antiga no saldo."""
+        if self.old_instance:
+            self.transaction._reverse_balance_changes(self.old_instance)
+
+# Estratégia 3: Atualizar uma transação já efetivada
+class UpdateCompletedStrategy(BalanceUpdateStrategy):
+    def execute(self):
+        """Primeiro reverte o estado antigo, depois aplica o novo."""
+        if self.old_instance:
+            self.transaction._reverse_balance_changes(self.old_instance)
+            self.transaction._process_balance_changes()
+
+# Estratégia "Nula": não faz nada
+class NullStrategy(BalanceUpdateStrategy):
+    def execute(self):
+        """Não faz nenhuma alteração no saldo."""
+        pass
+
+def get_balance_update_strategy(transaction: Transaction, old_instance: Transaction | None) -> BalanceUpdateStrategy:
+    """
+    Função "Factory" que escolhe a estratégia correta com base na
+    mudança de estado da transação.
+    """
+    is_new = old_instance is None
+    new_status = transaction.status
+    old_status = old_instance.status if old_instance else None
+
+    # Cenário 1: Efetivação (nova ou atualização)
+    if new_status == Transaction.Status.COMPLETED and old_status != Transaction.Status.COMPLETED:
+        return CompletionStrategy(transaction)
+    
+    # Cenário 2: Reversão
+    if new_status != Transaction.Status.COMPLETED and old_status == Transaction.Status.COMPLETED:
+        return ReversalStrategy(transaction, old_instance)
+        
+    # Cenário 3: Atualização de uma já completada
+    if new_status == Transaction.Status.COMPLETED and old_status == Transaction.Status.COMPLETED:
+        # Verifica se algo relevante mudou (valor ou contas)
+        if (old_instance.value != transaction.value or
+                old_instance.origin_account != transaction.origin_account or
+                old_instance.destination_account != transaction.destination_account):
+            return UpdateCompletedStrategy(transaction, old_instance)
+
+    # Para todos os outros casos (ex: de PENDING para OVERDUE), não faz nada.
+    return NullStrategy(transaction)

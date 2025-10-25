@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+
 from .querysets import TransactionQuerySet
 from django.db.models import F
 # Importa o modelo de Conta da outra app
@@ -136,26 +137,36 @@ class Transaction(models.Model):
         return False
 
     def save(self, *args, **kwargs):
+        """
+        Sobrescreve o save para orquestrar a atualização de saldo usando o
+        Strategy Pattern.
+        """
         old_instance = None
         if not self._state.adding:
-            old_instance = Transaction.objects.select_related('origin_account', 'destination_account').get(pk=self.pk)
+            old_instance = Transaction.objects.select_related(
+                'origin_account', 'destination_account'
+            ).get(pk=self.pk)
         
-        # Define/limpa completion_date
+        from .services import get_balance_update_strategy
+
+        # --- LÓGICA DE NEGÓCIO DELEGADA ---
+        # 1. Escolhe a estratégia de atualização de saldo correta
+        strategy = get_balance_update_strategy(self, old_instance)
+        # --- FIM DA DELEGAÇÃO ---
+        
+        # Lógica de data de efetivação permanece simples
         if self.status == self.Status.COMPLETED and self.completion_date is None:
             self.completion_date = timezone.now().date()
         elif self.status != self.Status.COMPLETED:
             self.completion_date = None
         
-        # 1. Se um estado antigo existe e ele estava completado, REVERTA-O
-        if old_instance and old_instance.status == self.Status.COMPLETED:
-            self._reverse_balance_changes(old_instance)
-            
-        # 2. Salva o novo estado da transação no banco de dados
+        # Salva o novo estado da transação
         super().save(*args, **kwargs)
-
-        # 3. Se o novo estado é completado, APLIQUE-O
-        if self.status == self.Status.COMPLETED:
-            self._process_balance_changes()
+        
+        # --- EXECUÇÃO DA ESTRATÉGIA ---
+        # 2. Executa a estratégia escolhida (que modifica os saldos)
+        strategy.execute()
+        # --- FIM DA EXECUÇÃO ---
 
     def delete(self, *args, **kwargs):
         """
